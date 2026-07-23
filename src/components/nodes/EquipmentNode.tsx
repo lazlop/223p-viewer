@@ -69,8 +69,13 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
       {data.typeName && <div className="equipment-node__type">{data.typeName}</div>}
       {data.hasChildren && <div className="equipment-node__hint">double-click to open</div>}
 
-      {data.properties.length > 0 && (
+      {(data.properties.length > 0 || data.systemMemberships.length > 0) && (
         <div className="equipment-node__tooltip">
+          {data.systemMemberships.length > 0 && (
+            <div className="tooltip-row">
+              <strong>member of</strong> {data.systemMemberships.join(", ")}
+            </div>
+          )}
           <PropertyRows properties={data.properties} />
         </div>
       )}

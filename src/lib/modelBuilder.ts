@@ -106,17 +106,29 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       properties: [],
       children: [],
       instrumentationLinks: [],
+      systemMemberships: [],
     });
   }
 
-  // Ownership + children + property attachment
-  const childEdgePredicates: Record<string, ChildRelation> = {
-    [P.contains]: "contains",
-    [P.hasMember]: "hasMember",
-    [P.encloses]: "encloses",
-  };
   const referencedAsChild = new Set<string>();
   const propertyOwner = new Map<string, string>(); // property uri -> the equipment/space that hasProperty's it
+
+  // Pass 1: connection-point ownership only. Resolved first (and fully) so the hasMember handling
+  // in pass 2 already knows whether a given System has any boundary ports of its own.
+  for (const edge of graph.edges) {
+    if (edge.predicate !== P.hasConnectionPoint && edge.predicate !== P.hasBoundaryConnectionPoint) continue;
+    const cp = connectionPoints.get(edge.target);
+    const owner = nodes.get(edge.source);
+    if (cp && owner) {
+      cp.ownerUri = owner.uri;
+      owner.connectionPoints.push(cp.uri);
+    }
+  }
+
+  const childEdgePredicates: Record<string, ChildRelation> = {
+    [P.contains]: "contains",
+    [P.encloses]: "encloses",
+  };
 
   // Predicates that describe how a Sensor/Actuator/Function relates to a Property/location it
   // senses or drives — first-class data (S223Model.nodes[].instrumentationLinks) rather than a
@@ -131,16 +143,9 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     [P.hasPhysicalLocation]: "hasPhysicalLocation",
   };
 
+  // Pass 2: everything else (hasConnectionPoint/hasBoundaryConnectionPoint already handled above).
   for (const edge of graph.edges) {
-    if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) {
-      const cp = connectionPoints.get(edge.target);
-      const owner = nodes.get(edge.source);
-      if (cp && owner) {
-        cp.ownerUri = owner.uri;
-        owner.connectionPoints.push(cp.uri);
-      }
-      continue;
-    }
+    if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) continue;
     if (edge.predicate === P.hasProperty) {
       const prop = properties.get(edge.target);
       const owner = nodes.get(edge.source);
@@ -160,6 +165,25 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       // Reverse direction: the Function (target) is what's "executed by" the equipment (source).
       const fn = nodes.get(edge.target);
       if (fn && nodes.has(edge.source)) fn.instrumentationLinks.push({ relation: "executedBy", targetUri: edge.source });
+      continue;
+    }
+    if (edge.predicate === P.hasMember) {
+      const system = nodes.get(edge.source);
+      const member = nodes.get(edge.target);
+      if (system && member) {
+        // A System is an arbitrary logical grouping that can cross physical equipment boundaries
+        // — membership in one doesn't by itself mean physical containment. Only treat it as a
+        // real drill-in relationship when the System has boundary connection points of its own
+        // (real dots to wire up, like a breaker panel); otherwise it's purely logical, so record
+        // it for hover text instead of drawing a redundant/disconnected box for the System.
+        if (system.connectionPoints.length > 0) {
+          system.children.push({ uri: member.uri, via: "hasMember" });
+          member.parentUri = system.uri;
+          referencedAsChild.add(member.uri);
+        } else {
+          member.systemMemberships.push(system.uri);
+        }
+      }
       continue;
     }
     const via = childEdgePredicates[edge.predicate];
@@ -225,10 +249,16 @@ export function buildS223Model(graph: RdfGraph): S223Model {
   }
 
   const roots = [...nodes.values()]
-    .filter((n) => !referencedAsChild.has(n.uri) && !HUB_TYPES.has(n.typeUri ?? ""))
+    .filter((n) => !referencedAsChild.has(n.uri) && !HUB_TYPES.has(n.typeUri ?? "") && !isInvisibleSystem(n))
     .map((n) => n.uri);
 
   return { nodes, connectionPoints, properties, edges: [], roots };
+}
+
+/** A System with no boundary connection points is a purely logical grouping (see the hasMember
+ * handling above) — it should never itself be rendered as a box, at root level or drilled into. */
+export function isInvisibleSystem(n: ModelNode): boolean {
+  return n.typeUri === T.System && n.connectionPoints.length === 0;
 }
 
 export { labelOf };

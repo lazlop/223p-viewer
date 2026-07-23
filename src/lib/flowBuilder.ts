@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { CPKind, S223Model } from "../types/s223";
 import { projectEdges } from "./hierarchy";
+import { isInvisibleSystem } from "./modelBuilder";
 
 export interface FlowCP {
   uri: string;
@@ -26,6 +27,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   hasChildren: boolean;
   connectionPoints: FlowCP[];
   properties: FlowProperty[];
+  /** labels of purely-logical Systems (no boundary ports of their own) this node is a member of */
+  systemMemberships: string[];
 }
 
 export interface FlowEdgeData extends Record<string, unknown> {
@@ -68,16 +71,17 @@ export function buildFlowElements(
 
   for (const uri of visibleUris) {
     const n = model.nodes.get(uri);
-    if (!n) continue;
+    if (!n || isInvisibleSystem(n)) continue;
     const connectionPoints = n.connectionPoints.map((cpUri) => toFlowCP(model, cpUri)).filter((cp): cp is FlowCP => Boolean(cp));
     const properties = n.properties.map((pUri) => toFlowProperty(model, pUri)).filter((p): p is FlowProperty => Boolean(p));
+    const systemMemberships = n.systemMemberships.map((sysUri) => model.nodes.get(sysUri)?.label).filter((l): l is string => Boolean(l));
     const kind: FlowNodeData["kind"] = connectionPoints.length > 0 ? "equipment" : "space";
 
     nodes.push({
       id: uri,
       type: "equipmentNode",
       position: { x: 0, y: 0 },
-      data: { label: n.label, typeName: n.typeName, kind, hasChildren: n.children.length > 0, connectionPoints, properties },
+      data: { label: n.label, typeName: n.typeName, kind, hasChildren: n.children.length > 0, connectionPoints, properties, systemMemberships },
     });
   }
 
