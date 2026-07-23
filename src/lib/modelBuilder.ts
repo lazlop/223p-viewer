@@ -1,5 +1,13 @@
 import type { RdfGraph, RdfNode } from "../types/rdf";
-import type { ChildRelation, CPKind, ConnectionPointRef, ModelNode, PropertyRef, S223Model } from "../types/s223";
+import type {
+  ChildRelation,
+  CPKind,
+  ConnectionPointRef,
+  InstrumentationRelation,
+  ModelNode,
+  PropertyRef,
+  S223Model,
+} from "../types/s223";
 import { P, T, localName } from "./namespaces";
 import { unitSymbol } from "./unitSymbols";
 
@@ -97,6 +105,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       connectionPoints: [],
       properties: [],
       children: [],
+      instrumentationLinks: [],
     });
   }
 
@@ -108,6 +117,19 @@ export function buildS223Model(graph: RdfGraph): S223Model {
   };
   const referencedAsChild = new Set<string>();
   const propertyOwner = new Map<string, string>(); // property uri -> the equipment/space that hasProperty's it
+
+  // Predicates that describe how a Sensor/Actuator/Function relates to a Property/location it
+  // senses or drives — first-class data (S223Model.nodes[].instrumentationLinks) rather than a
+  // throwaway scan, so both the hierarchy fallback below and the Sensors & Controls view can
+  // consume the same source of truth instead of each re-deriving it from raw RDF.
+  const instrumentationPredicates: Record<string, InstrumentationRelation> = {
+    [P.observes]: "observes",
+    [P.actuatedByProperty]: "actuatedByProperty",
+    [P.hasInput]: "hasInput",
+    [P.hasOutput]: "hasOutput",
+    [P.hasObservationLocation]: "hasObservationLocation",
+    [P.hasPhysicalLocation]: "hasPhysicalLocation",
+  };
 
   for (const edge of graph.edges) {
     if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) {
@@ -126,6 +148,18 @@ export function buildS223Model(graph: RdfGraph): S223Model {
         owner.properties.push(prop.uri);
         propertyOwner.set(prop.uri, owner.uri);
       }
+      continue;
+    }
+    const instrumentationRelation = instrumentationPredicates[edge.predicate];
+    if (instrumentationRelation) {
+      const subject = nodes.get(edge.source);
+      if (subject) subject.instrumentationLinks.push({ relation: instrumentationRelation, targetUri: edge.target });
+      continue;
+    }
+    if (edge.predicate === P.executes) {
+      // Reverse direction: the Function (target) is what's "executed by" the equipment (source).
+      const fn = nodes.get(edge.target);
+      if (fn && nodes.has(edge.source)) fn.instrumentationLinks.push({ relation: "executedBy", targetUri: edge.source });
       continue;
     }
     const via = childEdgePredicates[edge.predicate];
@@ -160,39 +194,29 @@ export function buildS223Model(graph: RdfGraph): S223Model {
   // A large share of Sensors/Actuators/Functions in real 223P data are never s223:contains'd
   // into any equipment — they're linked functionally instead (a Sensor observes a Property that
   // some equipment owns, or has an observation/physical location; an Actuator drives a Property;
-  // a Function is run via another node's s223:executes). Falling back to those relations nests
-  // them under the equipment they actually belong to instead of leaving them stranded as
-  // top-level roots. Only applies to nodes still unclaimed after real containment, and only picks
-  // one parent (first match, in the priority order below) to keep the hierarchy a tree.
-  const executedBy = new Map<string, string>(); // function uri -> its executor
-  for (const edge of graph.edges) {
-    if (edge.predicate !== P.executes) continue;
-    if (nodes.has(edge.source) && nodes.has(edge.target)) executedBy.set(edge.target, edge.source);
-  }
-
-  const functionalPredicates = [P.observes, P.actuatedByProperty, P.hasInput, P.hasOutput];
-  const locationPredicates = [P.hasObservationLocation, P.hasPhysicalLocation];
-
-  function resolveFunctionalParent(uri: string): string | undefined {
-    const rdfNode = graph.nodes.get(uri);
-    if (!rdfNode) return undefined;
-    for (const prop of rdfNode.properties) {
-      if (prop.isLiteral || !functionalPredicates.includes(prop.predicate)) continue;
-      const owner = propertyOwner.get(prop.object);
+  // a Function is run via another node's s223:executes). Falling back to those relations (now
+  // captured on each node as instrumentationLinks, above) nests them under the equipment they
+  // actually belong to instead of leaving them stranded as top-level roots. Only applies to nodes
+  // still unclaimed after real containment, and only picks one parent (first match, in the
+  // priority order below) to keep the hierarchy a tree.
+  function resolveFunctionalParent(node: ModelNode): string | undefined {
+    for (const link of node.instrumentationLinks) {
+      if (link.relation !== "observes" && link.relation !== "actuatedByProperty" && link.relation !== "hasInput" && link.relation !== "hasOutput") continue;
+      const owner = propertyOwner.get(link.targetUri);
       if (owner) return owner;
     }
-    for (const prop of rdfNode.properties) {
-      if (prop.isLiteral || !locationPredicates.includes(prop.predicate)) continue;
-      if (nodes.has(prop.object)) return prop.object; // points straight at a Space/Zone container
-      const cp = connectionPoints.get(prop.object);
+    for (const link of node.instrumentationLinks) {
+      if (link.relation !== "hasObservationLocation" && link.relation !== "hasPhysicalLocation") continue;
+      if (nodes.has(link.targetUri)) return link.targetUri; // points straight at a Space/Zone container
+      const cp = connectionPoints.get(link.targetUri);
       if (cp?.ownerUri) return cp.ownerUri;
     }
-    return executedBy.get(uri);
+    return node.instrumentationLinks.find((link) => link.relation === "executedBy")?.targetUri;
   }
 
   for (const node of nodes.values()) {
     if (referencedAsChild.has(node.uri) || HUB_TYPES.has(node.typeUri ?? "")) continue;
-    const parentUri = resolveFunctionalParent(node.uri);
+    const parentUri = resolveFunctionalParent(node);
     const parent = parentUri ? nodes.get(parentUri) : undefined;
     if (!parent || parent.uri === node.uri) continue;
     parent.children.push({ uri: node.uri, via: "functional" });

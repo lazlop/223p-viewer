@@ -1,16 +1,30 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { ReactFlowProvider } from "@xyflow/react";
+import { ReactFlowProvider, type EdgeTypes, type Node, type NodeTypes } from "@xyflow/react";
 import defaultModelTtl from "../models/nist-bdg1-1.ttl?raw";
 import { parseTtl } from "./lib/ttlParser";
 import { buildS223Model } from "./lib/modelBuilder";
 import { collapseConnections } from "./lib/connectionTopology";
 import { childrenOf, pathTo, rootNodes } from "./lib/hierarchy";
 import { buildFlowElements } from "./lib/flowBuilder";
+import { buildPointsFlowElements, type PointsFlowNodeData } from "./lib/pointsFlowBuilder";
 import { layoutGraph } from "./lib/layout";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { Breadcrumb } from "./components/Breadcrumb";
+import { EquipmentNode } from "./components/nodes/EquipmentNode";
+import { PointNode } from "./components/nodes/PointNode";
+import { PropertyPillNode } from "./components/nodes/PropertyPillNode";
+import { ReferenceNode } from "./components/nodes/ReferenceNode";
+import { ConnectionEdge } from "./components/edges/ConnectionEdge";
+import { InstrumentationEdge } from "./components/edges/InstrumentationEdge";
 import type { S223Model } from "./types/s223";
 import "./App.css";
+
+const EQUIPMENT_NODE_TYPES: NodeTypes = { equipmentNode: EquipmentNode };
+const EQUIPMENT_EDGE_TYPES: EdgeTypes = { connectionEdge: ConnectionEdge };
+const POINTS_NODE_TYPES: NodeTypes = { pointNode: PointNode, propertyPill: PropertyPillNode, referenceNode: ReferenceNode };
+const POINTS_EDGE_TYPES: EdgeTypes = { instrumentationEdge: InstrumentationEdge };
+
+type ViewMode = "equipment" | "points";
 
 function buildModel(text: string): S223Model {
   const { graph } = parseTtl(text);
@@ -23,6 +37,7 @@ export default function App() {
   const [source, setSource] = useState(defaultModelTtl);
   const [fileName, setFileName] = useState("nist-bdg1-1.ttl (bundled example)");
   const [containerUri, setContainerUri] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("equipment");
 
   const model = useMemo(() => buildModel(source), [source]);
 
@@ -33,19 +48,36 @@ export default function App() {
     return new Set(list.map((n) => n.uri));
   }, [model, containerUri]);
 
-  const { nodes, edges } = useMemo(() => {
+  const equipmentFlow = useMemo(() => {
     const flow = buildFlowElements(model, visibleUris, containerUri ?? undefined);
     const laidOutNodes = layoutGraph(flow.nodes, flow.edges, (n) => n.data.connectionPoints.length);
     return { nodes: laidOutNodes, edges: flow.edges };
   }, [model, visibleUris, containerUri]);
 
+  const pointsFlow = useMemo(() => {
+    const flow = buildPointsFlowElements(model);
+    // TB (not the default LR): most chains here are short point->property->reference triples, so
+    // LR makes every component ~3 boxes wide and only 1 tall — the grid-packer then only fits ~2
+    // per row and stacks dozens of rows. Stacking each chain vertically instead keeps components
+    // narrow, so far more fit side by side.
+    const laidOutNodes = layoutGraph(flow.nodes, flow.edges, () => 0, "TB");
+    return { nodes: laidOutNodes, edges: flow.edges };
+  }, [model]);
+
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
+      if (viewMode !== "equipment") return;
       const node = model.nodes.get(nodeId);
       if (node && node.children.length > 0) setContainerUri(nodeId);
     },
-    [model],
+    [model, viewMode],
   );
+
+  const handlePointsNodeClick = useCallback((node: Node<PointsFlowNodeData>) => {
+    if (node.type !== "referenceNode") return;
+    setViewMode("equipment");
+    setContainerUri(node.data.jumpToContainerUri ?? null);
+  }, []);
 
   const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,6 +87,7 @@ export default function App() {
       setSource(String(reader.result));
       setFileName(file.name);
       setContainerUri(null);
+      setViewMode("equipment");
     };
     reader.readAsText(file);
   }, []);
@@ -63,7 +96,21 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <div className="app__title">223P Model Viewer</div>
-        <Breadcrumb path={path} onNavigate={setContainerUri} />
+        <div className="app__view-toggle">
+          <button
+            className={`app__view-toggle-btn ${viewMode === "equipment" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => setViewMode("equipment")}
+          >
+            Equipment
+          </button>
+          <button
+            className={`app__view-toggle-btn ${viewMode === "points" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => setViewMode("points")}
+          >
+            Sensors &amp; Controls
+          </button>
+        </div>
+        {viewMode === "equipment" && <Breadcrumb path={path} onNavigate={setContainerUri} />}
         <div className="app__file">
           <span className="app__file-name" title={fileName}>
             {fileName}
@@ -76,7 +123,25 @@ export default function App() {
       </header>
       <div className="app__canvas">
         <ReactFlowProvider>
-          <FlowCanvas nodes={nodes} edges={edges} viewKey={containerUri ?? "__root__"} onNodeDoubleClick={handleNodeDoubleClick} />
+          {viewMode === "equipment" ? (
+            <FlowCanvas
+              nodes={equipmentFlow.nodes}
+              edges={equipmentFlow.edges}
+              nodeTypes={EQUIPMENT_NODE_TYPES}
+              edgeTypes={EQUIPMENT_EDGE_TYPES}
+              viewKey={containerUri ?? "__root__"}
+              onNodeDoubleClick={handleNodeDoubleClick}
+            />
+          ) : (
+            <FlowCanvas
+              nodes={pointsFlow.nodes}
+              edges={pointsFlow.edges}
+              nodeTypes={POINTS_NODE_TYPES}
+              edgeTypes={POINTS_EDGE_TYPES}
+              viewKey="__points__"
+              onNodeClick={handlePointsNodeClick}
+            />
+          )}
         </ReactFlowProvider>
       </div>
     </div>

@@ -46,7 +46,7 @@ function toFlowCP(model: S223Model, cpUri: string): FlowCP | undefined {
   return { uri: cp.uri, label: cp.label, kind: cp.kind, medium: cp.medium, mapsTo: cp.mapsTo };
 }
 
-function toFlowProperty(model: S223Model, propUri: string): FlowProperty | undefined {
+export function toFlowProperty(model: S223Model, propUri: string): FlowProperty | undefined {
   const p = model.properties.get(propUri);
   if (!p) return undefined;
   return {
