@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { CPKind, S223Model } from "../types/s223";
-import { boundaryLinks, projectEdges } from "./hierarchy";
+import { projectEdges } from "./hierarchy";
 
 export interface FlowCP {
   uri: string;
@@ -22,7 +22,7 @@ export interface FlowProperty {
 export interface FlowNodeData extends Record<string, unknown> {
   label: string;
   typeName?: string;
-  kind: "equipment" | "space" | "boundary";
+  kind: "equipment" | "space";
   hasChildren: boolean;
   connectionPoints: FlowCP[];
   properties: FlowProperty[];
@@ -36,9 +36,6 @@ export interface FlowEdgeData extends Record<string, unknown> {
    * walked up to a visible ancestor because the true owner is nested inside a collapsed container. */
   rolledUp: boolean;
 }
-
-const BOUNDARY_SUFFIX = "::boundary";
-export const boundaryNodeId = (containerUri: string) => `${containerUri}${BOUNDARY_SUFFIX}`;
 
 function toFlowCP(model: S223Model, cpUri: string): FlowCP | undefined {
   const cp = model.connectionPoints.get(cpUri);
@@ -60,15 +57,12 @@ export function toFlowProperty(model: S223Model, propUri: string): FlowProperty 
 }
 
 /**
- * Builds React Flow nodes/edges for one "view": the given set of visible container-node URIs
- * (either the model roots, or one container's children when drilled in), plus — when
- * `containerUri` is given — a boundary frame node exposing the container's own connection points
- * so the drilled-in view still shows how internals reach the outside world (via s223:mapsTo).
+ * Builds React Flow nodes/edges for one "view": the given set of visible container-node URIs —
+ * either the model roots, or one container's children when drilled in.
  */
 export function buildFlowElements(
   model: S223Model,
   visibleUris: Set<string>,
-  containerUri?: string,
 ): { nodes: Node<FlowNodeData>[]; edges: Edge<FlowEdgeData>[] } {
   const nodes: Node<FlowNodeData>[] = [];
 
@@ -108,37 +102,6 @@ export function buildFlowElements(
       },
     };
   });
-
-  if (containerUri) {
-    const container = model.nodes.get(containerUri);
-    if (container) {
-      const connectionPoints = container.connectionPoints
-        .map((cpUri) => toFlowCP(model, cpUri))
-        .filter((cp): cp is FlowCP => Boolean(cp));
-      if (connectionPoints.length > 0) {
-        nodes.push({
-          id: boundaryNodeId(containerUri),
-          type: "equipmentNode",
-          position: { x: 0, y: 0 },
-          data: { label: `${container.label} boundary`, typeName: container.typeName, kind: "boundary", hasChildren: false, connectionPoints, properties: [] },
-        });
-
-        for (const link of boundaryLinks(model, containerUri)) {
-          const childCP = model.connectionPoints.get(link.childCPUri);
-          if (!childCP?.ownerUri || !visibleUris.has(childCP.ownerUri)) continue;
-          edges.push({
-            id: `boundary::${link.containerCPUri}::${link.childCPUri}`,
-            source: boundaryNodeId(containerUri),
-            sourceHandle: link.containerCPUri,
-            target: childCP.ownerUri,
-            targetHandle: link.childCPUri,
-            type: "connectionEdge",
-            data: { hubLabel: "boundary", properties: [], rolledUp: false },
-          });
-        }
-      }
-    }
-  }
 
   return { nodes, edges };
 }

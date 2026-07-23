@@ -129,11 +129,6 @@
   border-color: #37B24D;
   border-style: dashed;
 }
-.equipment-node--boundary {
-  border-color: #868E96;
-  border-style: dotted;
-  background: #f8f9fa;
-}
 
 .equipment-node__label {
   font-size: 13px;

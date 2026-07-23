@@ -49,10 +49,10 @@ export default function App() {
   }, [model, containerUri]);
 
   const equipmentFlow = useMemo(() => {
-    const flow = buildFlowElements(model, visibleUris, containerUri ?? undefined);
+    const flow = buildFlowElements(model, visibleUris);
     const laidOutNodes = layoutGraph(flow.nodes, flow.edges, (n) => n.data.connectionPoints.length);
     return { nodes: laidOutNodes, edges: flow.edges };
-  }, [model, visibleUris, containerUri]);
+  }, [model, visibleUris]);
 
   const pointsFlow = useMemo(() => {
     const flow = buildPointsFlowElements(model);
