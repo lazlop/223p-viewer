@@ -1,0 +1,55 @@
+export type CPKind = "Inlet" | "Outlet" | "Bidirectional" | "Other";
+
+export interface PropertyRef {
+  uri: string;
+  label: string;
+  typeName?: string;
+  value?: string;
+  quantityKind?: string;
+  unit?: string; // local name, e.g. DEG_F
+  unitSymbol?: string;
+  enumerationKind?: string;
+  mapsTo: string[]; // uris of mapped properties/points (external references)
+}
+
+export interface ConnectionPointRef {
+  uri: string;
+  label: string;
+  kind: CPKind;
+  medium?: string;
+  ownerUri?: string; // equipment/system/space that owns it via hasConnectionPoint
+  mapsTo: string[]; // uris of corresponding connection points (e.g. an internal CP mapped to its parent's boundary CP)
+}
+
+export type ChildRelation = "contains" | "hasMember" | "encloses";
+
+export interface ModelNode {
+  uri: string;
+  label: string;
+  typeUri?: string;
+  typeName?: string;
+  connectionPoints: string[]; // uris into S223Model.connectionPoints
+  properties: string[]; // uris into S223Model.properties
+  children: { uri: string; via: ChildRelation }[];
+  parentUri?: string;
+}
+
+export interface ConnectionEdge {
+  id: string;
+  hubUri: string;
+  hubLabel: string;
+  medium?: string;
+  fromEquipmentUri: string;
+  fromCPUri: string;
+  toEquipmentUri: string;
+  toCPUri: string;
+  properties: string[]; // hub-level property uris
+}
+
+export interface S223Model {
+  nodes: Map<string, ModelNode>;
+  connectionPoints: Map<string, ConnectionPointRef>;
+  properties: Map<string, PropertyRef>;
+  edges: ConnectionEdge[];
+  roots: string[];
+}

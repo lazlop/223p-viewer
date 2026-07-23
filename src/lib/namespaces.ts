@@ -1,0 +1,46 @@
+export const S223 = "http://data.ashrae.org/standard223#";
+export const QUDT = "http://qudt.org/schema/qudt/";
+export const UNIT = "http://qudt.org/vocab/unit/";
+export const QUANTITY_KIND = "http://qudt.org/vocab/quantitykind/";
+export const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
+export const XSD = "http://www.w3.org/2001/XMLSchema#";
+
+export const s223 = (localName: string) => `${S223}${localName}`;
+
+// Predicates
+export const P = {
+  contains: s223("contains"),
+  hasMember: s223("hasMember"),
+  encloses: s223("encloses"),
+  hasConnectionPoint: s223("hasConnectionPoint"),
+  hasBoundaryConnectionPoint: s223("hasBoundaryConnectionPoint"),
+  cnx: s223("cnx"),
+  connectsThrough: s223("connectsThrough"),
+  hasProperty: s223("hasProperty"),
+  hasMedium: s223("hasMedium"),
+  hasValue: s223("hasValue"),
+  hasEnumerationKind: s223("hasEnumerationKind"),
+  mapsTo: s223("mapsTo"),
+  hasQuantityKind: `${QUDT}hasQuantityKind`,
+  hasUnit: `${QUDT}hasUnit`,
+};
+
+// Types
+export const T = {
+  InletConnectionPoint: s223("InletConnectionPoint"),
+  OutletConnectionPoint: s223("OutletConnectionPoint"),
+  BidirectionalConnectionPoint: s223("BidirectionalConnectionPoint"),
+  Connection: s223("Connection"),
+  Conductor: s223("Conductor"),
+  System: s223("System"),
+  PhysicalSpace: s223("PhysicalSpace"),
+  DomainSpace: s223("DomainSpace"),
+  Zone: s223("Zone"),
+};
+
+export function localName(uri: string): string {
+  const hashIdx = uri.lastIndexOf("#");
+  if (hashIdx !== -1) return uri.slice(hashIdx + 1);
+  const slashIdx = uri.lastIndexOf("/");
+  return slashIdx !== -1 ? uri.slice(slashIdx + 1) : uri;
+}
