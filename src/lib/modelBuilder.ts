@@ -4,7 +4,8 @@ import { P, T, localName } from "./namespaces";
 import { unitSymbol } from "./unitSymbols";
 
 const CONNECTION_POINT_TYPES = new Set([T.InletConnectionPoint, T.OutletConnectionPoint, T.BidirectionalConnectionPoint]);
-const HUB_TYPES = new Set([T.Connection, T.Conductor]);
+const HUB_TYPES = new Set([T.Connection, T.Conductor, T.Duct, T.Pipe]);
+const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
 function hasAnyType(node: RdfNode, types: Set<string>): boolean {
   return node.types.some((t) => types.has(t));
@@ -75,6 +76,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
 
   for (const node of graph.nodes.values()) {
     if (node.types.length === 0) continue; // untyped nodes are blank-node scaffolding, not renderable
+    if (node.types.includes(OWL_ONTOLOGY)) continue; // the file's own owl:Ontology self-declaration, not model content
     if (hasAnyType(node, CONNECTION_POINT_TYPES) || node.types.some(isConnectionPointType)) {
       connectionPoints.set(node.uri, buildConnectionPoint(node));
       continue;
@@ -105,6 +107,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     [P.encloses]: "encloses",
   };
   const referencedAsChild = new Set<string>();
+  const propertyOwner = new Map<string, string>(); // property uri -> the equipment/space that hasProperty's it
 
   for (const edge of graph.edges) {
     if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) {
@@ -119,7 +122,10 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     if (edge.predicate === P.hasProperty) {
       const prop = properties.get(edge.target);
       const owner = nodes.get(edge.source);
-      if (prop && owner) owner.properties.push(prop.uri);
+      if (prop && owner) {
+        owner.properties.push(prop.uri);
+        propertyOwner.set(prop.uri, owner.uri);
+      }
       continue;
     }
     const via = childEdgePredicates[edge.predicate];
@@ -149,6 +155,49 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     if (!owner || !cp || cp.ownerUri || HUB_TYPES.has(owner.typeUri ?? "")) continue;
     cp.ownerUri = owner.uri;
     owner.connectionPoints.push(cp.uri);
+  }
+
+  // A large share of Sensors/Actuators/Functions in real 223P data are never s223:contains'd
+  // into any equipment — they're linked functionally instead (a Sensor observes a Property that
+  // some equipment owns, or has an observation/physical location; an Actuator drives a Property;
+  // a Function is run via another node's s223:executes). Falling back to those relations nests
+  // them under the equipment they actually belong to instead of leaving them stranded as
+  // top-level roots. Only applies to nodes still unclaimed after real containment, and only picks
+  // one parent (first match, in the priority order below) to keep the hierarchy a tree.
+  const executedBy = new Map<string, string>(); // function uri -> its executor
+  for (const edge of graph.edges) {
+    if (edge.predicate !== P.executes) continue;
+    if (nodes.has(edge.source) && nodes.has(edge.target)) executedBy.set(edge.target, edge.source);
+  }
+
+  const functionalPredicates = [P.observes, P.actuatedByProperty, P.hasInput, P.hasOutput];
+  const locationPredicates = [P.hasObservationLocation, P.hasPhysicalLocation];
+
+  function resolveFunctionalParent(uri: string): string | undefined {
+    const rdfNode = graph.nodes.get(uri);
+    if (!rdfNode) return undefined;
+    for (const prop of rdfNode.properties) {
+      if (prop.isLiteral || !functionalPredicates.includes(prop.predicate)) continue;
+      const owner = propertyOwner.get(prop.object);
+      if (owner) return owner;
+    }
+    for (const prop of rdfNode.properties) {
+      if (prop.isLiteral || !locationPredicates.includes(prop.predicate)) continue;
+      if (nodes.has(prop.object)) return prop.object; // points straight at a Space/Zone container
+      const cp = connectionPoints.get(prop.object);
+      if (cp?.ownerUri) return cp.ownerUri;
+    }
+    return executedBy.get(uri);
+  }
+
+  for (const node of nodes.values()) {
+    if (referencedAsChild.has(node.uri) || HUB_TYPES.has(node.typeUri ?? "")) continue;
+    const parentUri = resolveFunctionalParent(node.uri);
+    const parent = parentUri ? nodes.get(parentUri) : undefined;
+    if (!parent || parent.uri === node.uri) continue;
+    parent.children.push({ uri: node.uri, via: "functional" });
+    node.parentUri = parent.uri;
+    referencedAsChild.add(node.uri);
   }
 
   const roots = [...nodes.values()]

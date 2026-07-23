@@ -2,7 +2,7 @@ import type { RdfGraph } from "../types/rdf";
 import type { ConnectionEdge, S223Model } from "../types/s223";
 import { P, T } from "./namespaces";
 
-const HUB_TYPES = new Set<string>([T.Connection, T.Conductor]);
+const HUB_TYPES = new Set<string>([T.Connection, T.Conductor, T.Duct, T.Pipe]);
 
 /** True for ConnectionPoints and Connection/Conductor hub nodes — the only things a cnx/connectsThrough edge should link topologically. Equipment nodes can also appear as the source of a cnx edge (declaring their own port instead of using hasConnectionPoint, per modelBuilder.ts), which is ownership, not topology, and must not be unioned into a hub component. */
 function isTopologyParticipant(model: S223Model, uri: string): boolean {

@@ -23,6 +23,13 @@ export const P = {
   mapsTo: s223("mapsTo"),
   hasQuantityKind: `${QUDT}hasQuantityKind`,
   hasUnit: `${QUDT}hasUnit`,
+  observes: s223("observes"),
+  hasObservationLocation: s223("hasObservationLocation"),
+  hasPhysicalLocation: s223("hasPhysicalLocation"),
+  actuatedByProperty: s223("actuatedByProperty"),
+  hasInput: s223("hasInput"),
+  hasOutput: s223("hasOutput"),
+  executes: s223("executes"),
 };
 
 // Types
@@ -32,6 +39,11 @@ export const T = {
   BidirectionalConnectionPoint: s223("BidirectionalConnectionPoint"),
   Connection: s223("Connection"),
   Conductor: s223("Conductor"),
+  // Verified against the published ontology (data.ashrae.org/BACnet/223p/223p.ttl): Duct and
+  // Pipe are rdfs:subClassOf s223:Connection, same as Conductor — all three are physical carrier
+  // hubs that should collapse into a connection arrow, not render as their own box.
+  Duct: s223("Duct"),
+  Pipe: s223("Pipe"),
   System: s223("System"),
   PhysicalSpace: s223("PhysicalSpace"),
   DomainSpace: s223("DomainSpace"),

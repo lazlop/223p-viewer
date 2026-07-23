@@ -21,7 +21,7 @@ export interface ConnectionPointRef {
   mapsTo: string[]; // uris of corresponding connection points (e.g. an internal CP mapped to its parent's boundary CP)
 }
 
-export type ChildRelation = "contains" | "hasMember" | "encloses";
+export type ChildRelation = "contains" | "hasMember" | "encloses" | "functional";
 
 export interface ModelNode {
   uri: string;
