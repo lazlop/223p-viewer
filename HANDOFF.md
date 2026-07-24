@@ -122,61 +122,79 @@ produced real problems once tested against `nist-bdg1-1.ttl`:
 
 ### What's implemented now
 In `modelBuilder.ts`, System membership is resolved **last**, after the physical containment tree
-and the collapsed connection topology (`edges`) are both fully known, using `ModelBuildOptions.
-inferSystemBoundaries` (default `true`):
+and the collapsed connection topology (`edges`) are both fully known.
 
-1. **Explicit boundary** (`hasBoundaryConnectionPoint.length > 0`) → in **literal** mode
-   (`inferSystemBoundaries: false`), this alone decides: real box, real drill-in children.
-2. **Inferred mode**, two additional rules, checked in order:
-   - **Majority-container**: if *more than half* of a System's members share the same
-     `parentUri` (from the physical tree, computed via `inferMajorityContainer` in
-     `modelBuilder.ts`), the System is nested into that container instead — logical only, no box,
+1. For each System, `inferMajorityContainer` (in `modelBuilder.ts`) checks whether *more than
+   half* of its members already share the same `parentUri` in the physical tree.
+2. **If a majority container exists** (the common case — e.g. Supply System is really just AHU's
+   supply-side subdivision, Return System too), `ModelBuildOptions.systemsAsBoxes` (default
+   `false`) decides how it's displayed — this is the one true axis of user choice now, exposed as
+   the header toggle **Systems: Flat** / **Systems: Abstracted**:
+   - **Flat** (`systemsAsBoxes: false`): the System stays purely logical — no box anywhere,
      `hasMember` becomes hover text (`member of <System>`) on each member wherever it *actually*
-     lives. This is what fixes Supply System (nests into AHU) and confirms Return System/
-     Kitchenette-lighting-system (already 100%-in-one-container) stay nested too.
-   - **Topology boundary evidence**: if no majority container exists, but *any* member's
-     collapsed connection topology (`model.edges`) reaches equipment that isn't itself a member
-     (`hasExternalConnection`), the System still renders as a real box — generalizes "boundary
-     connection point" from "must be RDF-asserted" to "can be inferred from actual wiring." Once
-     a System qualifies this way, its members become real tree-children and the **existing**
-     `projectEdges` rollup mechanism automatically draws dashed arrows for any member's external
-     connection — no separate dot-synthesis code was needed for this rule; it was going to be, but
-     turned out to already be handled by machinery built for a different problem (cross-container
-     `contains` rollup) earlier in the session.
-3. `isInvisibleSystem(n)` (exported from `modelBuilder.ts`) is the single predicate both the
+     lives (still nested under the majority container, untouched).
+   - **Abstracted** (`systemsAsBoxes: true`): the System becomes a **real, drillable box**, nested
+     as a child of the majority container. Every member is *moved* into the System's children —
+     this is the one place `s223:hasMember` is allowed to override `s223:contains` as the tree
+     parent, specifically because the user opted into it. Concretely: drilling into the AHU shows
+     a "Supply System" box instead of 7 flattened pieces of equipment; drilling into that box shows
+     the equipment (plus its 8th member, "External loop", which had no other physical home either
+     way).
+3. **If no majority container exists** (a System's members are scattered, or it's a genuine
+   standalone assembly like a breaker panel), it renders as a real **root-level** box regardless of
+   the toggle above — either because it has an explicit `hasBoundaryConnectionPoint` (Breaker
+   panel1), or because its members' collapsed connection topology reaches equipment outside the
+   System (`hasExternalConnection` — generalizes "boundary connection point" from "must be
+   RDF-asserted" to "can be inferred from actual wiring"; untested against real data so far, see
+   gaps below). Once a System qualifies this way, its members become real tree-children and the
+   **existing** `projectEdges` rollup mechanism automatically draws dashed arrows for any member's
+   external connection — no separate dot-synthesis code was needed; it turned out to already be
+   handled by machinery built for a different problem (cross-container `contains` rollup) earlier
+   in the project.
+4. `isInvisibleSystem(n)` (exported from `modelBuilder.ts`) is the single predicate both the
    `roots` computation and `flowBuilder.ts`'s render loop use to decide "does this System get a
-   box." It reads `n.systemRendersAsBox`, set once during the pass above — not re-derived from
-   `connectionPoints.length` anymore now that the decision is richer than that.
+   box at all." It reads `n.systemRendersAsBox`, set once during the pass above.
 
-A header toggle (**Systems: Inferred** / **Systems: Literal**) switches `App.tsx`'s `systemMode`
-state, which fully rebuilds the model (cheap) and resets `containerUri` to `null` (the
-containment tree genuinely differs between modes, so a stale drill path could point at a
-container that doesn't mean the same thing anymore).
+A header toggle (**Systems: Flat** / **Systems: Abstracted**) switches `App.tsx`'s
+`systemDisplayMode` state, which fully rebuilds the model (cheap) and resets `containerUri` to
+`null` (the containment tree genuinely differs between modes, so a stale drill path could point at
+a container that doesn't mean the same thing anymore).
 
-Verified against the bundled model (both modes): root count is 45 either way — in inferred mode
-Supply System stops being a root but External Loop starts being one instead (previously hidden
-as Supply System's child), a wash; zero nodes end up double-parented; Breaker panel1 (majority
-container doesn't apply — its members are scattered breakers/circuits, not concentrated in one
-piece of equipment) is unaffected in either mode.
+Two earlier approaches were tried and abandoned before landing here, worth knowing about so they
+aren't reinvented:
+- **Every System always renders as its own box** (the original, pre-this-project-history
+  approach): broke because `hasMember` and `contains` can independently claim the same node as
+  their "parent," and a single-parent tree can only honor one — surfaced as Return System floating
+  disconnected from the AHU even though its members physically live there. See `git show 0232d0c`.
+- **A dashed bounding-box "cluster frame" drawn over the flattened Flat-mode layout**, rather than
+  an actual box you drill into: tried, then explicitly rejected in favor of the real-box toggle
+  above once the user tried it and preferred an actual drillable abstraction over a soft visual
+  hint. Removed entirely in this session (was `flowBuilder.ts::computeSystemGroups` +
+  `layout.ts::computeGroupFrameNodes`/`computeGroupLabelNodes` + two node components) — don't
+  resurrect without reason; it had a real unresolved bug where two Systems' frames could overlap
+  and a frame could visually enclose a non-member node, since dagre's layout has zero awareness of
+  System membership.
+
+Verified against the bundled model (both modes): root count is 45 either way; in Abstracted mode,
+drilling into AHU shows "Supply System" and "Return System" as real boxes with their equipment
+correctly moved inside (confirmed via breadcrumb `Root/AHU/Supply System` and its 8 children);
+Breaker panel1 (no majority container — its members are scattered breakers/circuits, not
+concentrated in one piece of equipment) is unaffected by the toggle in either mode, as expected.
 
 ### Known gaps / open threads for next session
-- **Rule 2 (topology boundary evidence) is untested against real data.** All 4 Systems in the
-  bundled model resolve via either explicit-boundary (Breaker panel1) or majority-container
-  (the other 3in inferred mode) — none of them exercise the "no majority container, but has
-  external wiring" path. Worth either constructing a synthetic test case or finding/trying a
-  different 223P model that has one (the app supports "Load .ttl" for any file).
+- **The "no majority container, external wiring" rule is untested against real data.** All 4
+  Systems in the bundled model resolve via either explicit-boundary (Breaker panel1) or majority-
+  container (the other 3) — none of them exercise the "no majority container, but has external
+  wiring" path. Worth either constructing a synthetic test case or finding/trying a different 223P
+  model that has one (the app supports "Load .ttl" for any file).
 - **The >50% majority threshold is a first guess**, not tuned against multiple examples. Only one
   real case (Supply System, 7/8 = 87.5%) validated it. Consider: should it weight by something
   other than raw member count (e.g. connection-point count per member)? Should transitively-nested
   containers count (`inferMajorityContainer` currently only looks at each member's *immediate*
   `parentUri`, not the full ancestor chain)?
-- **No visual/hover indication of *why* a System is nested or boxed** — e.g. hovering a member
-  that's "member of Supply System" doesn't say *because it's nested in AHU* vs. *because Supply
-  System has explicit boundary CPs*. Could be worth surfacing for debugging trust in the
-  inference, especially before trying it on an unfamiliar model.
-- **Sensors & Controls view doesn't show `systemMemberships` at all.** `EquipmentNode.tsx` grew a
-  `member of <System>` tooltip line this session; `PointNode.tsx` (the equivalent box in the
-  other view) never got the same treatment. Inconsistent — worth deciding if it should.
+- **Sensors & Controls view doesn't show `systemMemberships` at all.** `EquipmentNode.tsx` has a
+  `member of <System>` tooltip line; `PointNode.tsx` (the equivalent box in the other view) never
+  got the same treatment. Inconsistent — worth deciding if it should.
 - Only tried against one model (`nist-bdg1-1.ttl`, 4 Systems total, fairly simple topology).
   Trying other real 223P models via "Load .ttl" would be the fastest way to find where the
   heuristics break down or feel wrong, before investing more in tuning them.

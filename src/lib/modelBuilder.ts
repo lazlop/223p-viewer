@@ -18,12 +18,16 @@ const HUB_TYPES = new Set([T.Connection, T.Conductor, T.Duct, T.Pipe]);
 const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
 export interface ModelBuildOptions {
-  /** Default true. When on, a System with no explicit boundary port still gets treated as a real
-   * physical container if the majority of its members already live inside one piece of
-   * equipment/space (nest the System into it instead), or as a real box if its members' wiring
-   * reaches equipment outside the system. When off, only explicit s223:hasBoundaryConnectionPoint
-   * makes a System render as a box — every other System is purely logical (hover text only). */
-  inferSystemBoundaries?: boolean;
+  /** Default false. Only affects Systems that resolve to a "majority container" — most of whose
+   * members already live inside one piece of equipment/space (e.g. "Supply System" is really just
+   * AHU's supply-side subdivision). When off, that System stays purely logical: flattened away,
+   * membership surfaced only as hover text on each member wherever it actually lives. When on, the
+   * System instead becomes a real drillable box nested inside that container, and every member is
+   * moved into it — so drilling into the AHU shows a "Supply System" box instead of its members
+   * flattened directly inside. Systems that don't resolve to a majority container (a real
+   * standalone assembly, like a breaker panel, or one whose wiring reaches outside its own
+   * membership) always render as a real box regardless of this option. */
+  systemsAsBoxes?: boolean;
 }
 
 function hasAnyType(node: RdfNode, types: Set<string>): boolean {
@@ -118,7 +122,7 @@ function hasExternalConnection(edges: ConnectionEdge[], memberUris: Set<string>)
  * container's child).
  */
 export function buildS223Model(graph: RdfGraph, options: ModelBuildOptions = {}): S223Model {
-  const inferSystemBoundaries = options.inferSystemBoundaries ?? true;
+  const systemsAsBoxes = options.systemsAsBoxes ?? false;
   const connectionPoints = new Map<string, ConnectionPointRef>();
   const properties = new Map<string, PropertyRef>();
   const nodes = new Map<string, ModelNode>();
@@ -290,24 +294,45 @@ export function buildS223Model(graph: RdfGraph, options: ModelBuildOptions = {})
   // s223:hasMember doesn't by itself mean physical containment the way s223:contains does. Decide,
   // per System, whether it should render as its own box (real children, drill-in) or stay purely
   // logical (membership surfaced as hover text on the members instead):
-  //   1. An explicit s223:hasBoundaryConnectionPoint always means "real box" in literal mode.
-  //   2. In inferred mode, that's overridden if most members already live inside one container
-  //      (nest the System into it — e.g. "Supply System" is really just AHU's supply-side
-  //      subdivision, its one external member notwithstanding).
-  //   3. Otherwise, in inferred mode, a System still counts as a real box if its members' wiring
-  //      actually reaches equipment outside the system, even with no explicit boundary port.
+  //   1. If most members already live inside one container (a "majority container" — e.g. "Supply
+  //      System" is really just AHU's supply-side subdivision, its one external member
+  //      notwithstanding), whether that becomes a real drillable box nested inside that container
+  //      or stays flattened+text-only is exactly what `systemsAsBoxes` toggles (see
+  //      ModelBuildOptions doc). Nothing else about System handling depends on that option.
+  //   2. Otherwise, a System counts as a real (root-level) box if it has an explicit
+  //      s223:hasBoundaryConnectionPoint, or if its members' wiring actually reaches equipment
+  //      outside the system even with no explicit boundary port — both cases mean it behaves like
+  //      a genuine standalone assembly, not a subdivision of something else, regardless of display
+  //      mode.
   for (const [systemUri, memberUris] of systemMembers) {
     const system = nodes.get(systemUri)!;
     const hasExplicitBoundary = system.connectionPoints.length > 0;
-    let renderAsBox: boolean;
-    if (!inferSystemBoundaries) {
-      renderAsBox = hasExplicitBoundary;
-    } else if (inferMajorityContainer(nodes, memberUris)) {
-      renderAsBox = false;
-    } else {
-      renderAsBox = hasExplicitBoundary || hasExternalConnection(edges, new Set(memberUris));
-    }
+    const majorityContainer = inferMajorityContainer(nodes, memberUris);
+    const renderAsBox = majorityContainer ? systemsAsBoxes : hasExplicitBoundary || hasExternalConnection(edges, new Set(memberUris));
     system.systemRendersAsBox = renderAsBox;
+
+    if (majorityContainer && systemsAsBoxes) {
+      // Abstraction mode: the System becomes a real intermediate box nested inside the container
+      // most of its members already live in, so drilling into that container shows the System box
+      // instead of its members flattened directly inside — this overrides s223:contains as the
+      // tree parent for every member (moving it out of wherever it used to live) rather than only
+      // claiming members that don't already have a physical home, unlike the branch below.
+      const container = nodes.get(majorityContainer)!;
+      container.children.push({ uri: systemUri, via: "hasMember" });
+      system.parentUri = majorityContainer;
+      referencedAsChild.add(systemUri);
+      for (const memberUri of memberUris) {
+        const member = nodes.get(memberUri)!;
+        if (member.parentUri) {
+          const oldParent = nodes.get(member.parentUri);
+          if (oldParent) oldParent.children = oldParent.children.filter((c) => c.uri !== memberUri);
+        }
+        system.children.push({ uri: memberUri, via: "hasMember" });
+        member.parentUri = systemUri;
+        referencedAsChild.add(memberUri);
+      }
+      continue;
+    }
 
     for (const memberUri of memberUris) {
       const member = nodes.get(memberUri)!;

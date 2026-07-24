@@ -24,11 +24,11 @@ const POINTS_NODE_TYPES: NodeTypes = { pointNode: PointNode, propertyPill: Prope
 const POINTS_EDGE_TYPES: EdgeTypes = { instrumentationEdge: InstrumentationEdge };
 
 type ViewMode = "equipment" | "points";
-type SystemMode = "inferred" | "literal";
+type SystemDisplayMode = "equipment" | "abstracted";
 
-function buildModel(text: string, systemMode: SystemMode): S223Model {
+function buildModel(text: string, systemDisplayMode: SystemDisplayMode): S223Model {
   const { graph } = parseTtl(text);
-  return buildS223Model(graph, { inferSystemBoundaries: systemMode === "inferred" });
+  return buildS223Model(graph, { systemsAsBoxes: systemDisplayMode === "abstracted" });
 }
 
 export default function App() {
@@ -36,9 +36,9 @@ export default function App() {
   const [fileName, setFileName] = useState("nist-bdg1-1.ttl (bundled example)");
   const [containerUri, setContainerUri] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("equipment");
-  const [systemMode, setSystemMode] = useState<SystemMode>("inferred");
+  const [systemDisplayMode, setSystemDisplayMode] = useState<SystemDisplayMode>("equipment");
 
-  const model = useMemo(() => buildModel(source, systemMode), [source, systemMode]);
+  const model = useMemo(() => buildModel(source, systemDisplayMode), [source, systemDisplayMode]);
 
   const path = useMemo(() => (containerUri ? pathTo(model, containerUri) : []), [model, containerUri]);
 
@@ -91,8 +91,8 @@ export default function App() {
     reader.readAsText(file);
   }, []);
 
-  const handleSystemModeChange = useCallback((mode: SystemMode) => {
-    setSystemMode(mode);
+  const handleSystemDisplayModeChange = useCallback((mode: SystemDisplayMode) => {
+    setSystemDisplayMode(mode);
     setContainerUri(null); // the containment tree can shift under a stale drill-in path
   }, []);
 
@@ -117,19 +117,19 @@ export default function App() {
         {viewMode === "equipment" && <Breadcrumb path={path} onNavigate={setContainerUri} />}
         <div
           className="app__view-toggle"
-          title="How Systems (s223:System) are handled: Inferred nests a System into whatever equipment most of its members already live in, or treats it as a real box if its wiring reaches outside equipment. Literal only uses explicit s223:hasBoundaryConnectionPoint declarations."
+          title="How Systems (s223:System) whose members mostly live inside one container are shown: Systems: Flat flattens them into that container with membership as hover text only; Systems: Abstracted nests them as a real box you can drill into instead."
         >
           <button
-            className={`app__view-toggle-btn ${systemMode === "inferred" ? "app__view-toggle-btn--active" : ""}`}
-            onClick={() => handleSystemModeChange("inferred")}
+            className={`app__view-toggle-btn ${systemDisplayMode === "equipment" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => handleSystemDisplayModeChange("equipment")}
           >
-            Systems: Inferred
+            Systems: Flat
           </button>
           <button
-            className={`app__view-toggle-btn ${systemMode === "literal" ? "app__view-toggle-btn--active" : ""}`}
-            onClick={() => handleSystemModeChange("literal")}
+            className={`app__view-toggle-btn ${systemDisplayMode === "abstracted" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => handleSystemDisplayModeChange("abstracted")}
           >
-            Systems: Literal
+            Systems: Abstracted
           </button>
         </div>
         <div className="app__file">
