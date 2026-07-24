@@ -3,7 +3,6 @@ import { ReactFlowProvider, type EdgeTypes, type Node, type NodeTypes } from "@x
 import defaultModelTtl from "../models/nist-bdg1-1.ttl?raw";
 import { parseTtl } from "./lib/ttlParser";
 import { buildS223Model } from "./lib/modelBuilder";
-import { collapseConnections } from "./lib/connectionTopology";
 import { childrenOf, pathTo, rootNodes } from "./lib/hierarchy";
 import { buildFlowElements } from "./lib/flowBuilder";
 import { buildPointsFlowElements, type PointsFlowNodeData } from "./lib/pointsFlowBuilder";
@@ -25,12 +24,11 @@ const POINTS_NODE_TYPES: NodeTypes = { pointNode: PointNode, propertyPill: Prope
 const POINTS_EDGE_TYPES: EdgeTypes = { instrumentationEdge: InstrumentationEdge };
 
 type ViewMode = "equipment" | "points";
+type SystemMode = "inferred" | "literal";
 
-function buildModel(text: string): S223Model {
+function buildModel(text: string, systemMode: SystemMode): S223Model {
   const { graph } = parseTtl(text);
-  const model = buildS223Model(graph);
-  model.edges = collapseConnections(graph, model);
-  return model;
+  return buildS223Model(graph, { inferSystemBoundaries: systemMode === "inferred" });
 }
 
 export default function App() {
@@ -38,8 +36,9 @@ export default function App() {
   const [fileName, setFileName] = useState("nist-bdg1-1.ttl (bundled example)");
   const [containerUri, setContainerUri] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("equipment");
+  const [systemMode, setSystemMode] = useState<SystemMode>("inferred");
 
-  const model = useMemo(() => buildModel(source), [source]);
+  const model = useMemo(() => buildModel(source, systemMode), [source, systemMode]);
 
   const path = useMemo(() => (containerUri ? pathTo(model, containerUri) : []), [model, containerUri]);
 
@@ -92,6 +91,11 @@ export default function App() {
     reader.readAsText(file);
   }, []);
 
+  const handleSystemModeChange = useCallback((mode: SystemMode) => {
+    setSystemMode(mode);
+    setContainerUri(null); // the containment tree can shift under a stale drill-in path
+  }, []);
+
   return (
     <div className="app">
       <header className="app__header">
@@ -111,6 +115,23 @@ export default function App() {
           </button>
         </div>
         {viewMode === "equipment" && <Breadcrumb path={path} onNavigate={setContainerUri} />}
+        <div
+          className="app__view-toggle"
+          title="How Systems (s223:System) are handled: Inferred nests a System into whatever equipment most of its members already live in, or treats it as a real box if its wiring reaches outside equipment. Literal only uses explicit s223:hasBoundaryConnectionPoint declarations."
+        >
+          <button
+            className={`app__view-toggle-btn ${systemMode === "inferred" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => handleSystemModeChange("inferred")}
+          >
+            Systems: Inferred
+          </button>
+          <button
+            className={`app__view-toggle-btn ${systemMode === "literal" ? "app__view-toggle-btn--active" : ""}`}
+            onClick={() => handleSystemModeChange("literal")}
+          >
+            Systems: Literal
+          </button>
+        </div>
         <div className="app__file">
           <span className="app__file-name" title={fileName}>
             {fileName}

@@ -50,12 +50,16 @@ export interface ModelNode {
   children: { uri: string; via: ChildRelation }[];
   parentUri?: string;
   instrumentationLinks: InstrumentationLink[];
-  // Systems this node is s223:hasMember of, but only ones with no boundary connection points of
-  // their own — a System is an arbitrary logical grouping that can cross equipment boundaries, so
-  // membership in one doesn't imply physical containment. Surfaced as hover text rather than a
-  // drill-in relationship. (Systems that DO have boundary ports stay in `children`/`parentUri`
-  // like any physical container, since they have real dots to wire up.)
+  // Systems this node is s223:hasMember of, but only ones NOT being treated as a physical
+  // container (see ModelNode.systemRendersAsBox) — a System is an arbitrary logical grouping that
+  // can cross equipment boundaries, so membership in one doesn't imply physical containment.
+  // Surfaced as hover text rather than a drill-in relationship.
   systemMemberships: string[]; // uris into S223Model.nodes
+  // Only meaningful when typeUri is s223:System: true when the System should render as its own
+  // box with real children (an explicit s223:hasBoundaryConnectionPoint, or — in inferred mode —
+  // topology showing a member wired to equipment outside the system, and no single container most
+  // of its members already live inside). False means it's treated as purely logical.
+  systemRendersAsBox: boolean;
 }
 
 export interface ConnectionEdge {

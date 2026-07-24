@@ -1,6 +1,7 @@
 import type { RdfGraph, RdfNode } from "../types/rdf";
 import type {
   ChildRelation,
+  ConnectionEdge,
   CPKind,
   ConnectionPointRef,
   InstrumentationRelation,
@@ -8,12 +9,22 @@ import type {
   PropertyRef,
   S223Model,
 } from "../types/s223";
+import { collapseConnections } from "./connectionTopology";
 import { P, T, localName } from "./namespaces";
 import { unitSymbol } from "./unitSymbols";
 
 const CONNECTION_POINT_TYPES = new Set([T.InletConnectionPoint, T.OutletConnectionPoint, T.BidirectionalConnectionPoint]);
 const HUB_TYPES = new Set([T.Connection, T.Conductor, T.Duct, T.Pipe]);
 const OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
+
+export interface ModelBuildOptions {
+  /** Default true. When on, a System with no explicit boundary port still gets treated as a real
+   * physical container if the majority of its members already live inside one piece of
+   * equipment/space (nest the System into it instead), or as a real box if its members' wiring
+   * reaches equipment outside the system. When off, only explicit s223:hasBoundaryConnectionPoint
+   * makes a System render as a box — every other System is purely logical (hover text only). */
+  inferSystemBoundaries?: boolean;
+}
 
 function hasAnyType(node: RdfNode, types: Set<string>): boolean {
   return node.types.some((t) => types.has(t));
@@ -72,12 +83,42 @@ function buildProperty(node: RdfNode): PropertyRef {
   };
 }
 
+/** The container most of `memberUris` already live in (via contains/encloses/functional
+ * attachment), if one accounts for a strict majority — used to infer "System1 is really just a
+ * subdivision of Equipment/System2" even when a few members (e.g. an external loop) don't share it. */
+function inferMajorityContainer(nodes: Map<string, ModelNode>, memberUris: string[]): string | undefined {
+  const counts = new Map<string, number>();
+  for (const uri of memberUris) {
+    const parent = nodes.get(uri)?.parentUri;
+    if (!parent) continue;
+    counts.set(parent, (counts.get(parent) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let bestCount = 0;
+  for (const [uri, count] of counts) {
+    if (count > bestCount) {
+      best = uri;
+      bestCount = count;
+    }
+  }
+  return best && bestCount > memberUris.length / 2 ? best : undefined;
+}
+
+/** True if some member's collapsed connection topology reaches equipment that isn't itself a
+ * member — real wiring evidence that the System has a genuine physical edge, even without an
+ * explicit s223:hasBoundaryConnectionPoint declaration. */
+function hasExternalConnection(edges: ConnectionEdge[], memberUris: Set<string>): boolean {
+  return edges.some((e) => memberUris.has(e.fromEquipmentUri) !== memberUris.has(e.toEquipmentUri));
+}
+
 /**
  * Walks a parsed RdfGraph and produces a 223P-aware domain model: equipment/space/system
- * "container" nodes with resolved connection points, properties, and structural children,
- * plus a roots list (container nodes never referenced as another container's child).
+ * "container" nodes with resolved connection points, properties, structural children, and the
+ * collapsed connection topology, plus a roots list (container nodes never referenced as another
+ * container's child).
  */
-export function buildS223Model(graph: RdfGraph): S223Model {
+export function buildS223Model(graph: RdfGraph, options: ModelBuildOptions = {}): S223Model {
+  const inferSystemBoundaries = options.inferSystemBoundaries ?? true;
   const connectionPoints = new Map<string, ConnectionPointRef>();
   const properties = new Map<string, PropertyRef>();
   const nodes = new Map<string, ModelNode>();
@@ -107,14 +148,15 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       children: [],
       instrumentationLinks: [],
       systemMemberships: [],
+      systemRendersAsBox: false,
     });
   }
 
   const referencedAsChild = new Set<string>();
   const propertyOwner = new Map<string, string>(); // property uri -> the equipment/space that hasProperty's it
 
-  // Pass 1: connection-point ownership only. Resolved first (and fully) so the hasMember handling
-  // in pass 2 already knows whether a given System has any boundary ports of its own.
+  // Pass 1: connection-point ownership only. Resolved first (and fully) so System-membership
+  // handling later already knows whether a given System has an explicit boundary port.
   for (const edge of graph.edges) {
     if (edge.predicate !== P.hasConnectionPoint && edge.predicate !== P.hasBoundaryConnectionPoint) continue;
     const cp = connectionPoints.get(edge.target);
@@ -143,7 +185,10 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     [P.hasPhysicalLocation]: "hasPhysicalLocation",
   };
 
-  // Pass 2: everything else (hasConnectionPoint/hasBoundaryConnectionPoint already handled above).
+  // Pass 2: everything except hasConnectionPoint/hasBoundaryConnectionPoint (done above) and
+  // hasMember (deferred — see below, it needs the physical containment tree AND the collapsed
+  // connection topology fully resolved first, to decide whether each System is a real container).
+  const systemMembers = new Map<string, string[]>(); // system uri -> member uris, in file order
   for (const edge of graph.edges) {
     if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) continue;
     if (edge.predicate === P.hasProperty) {
@@ -168,21 +213,9 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       continue;
     }
     if (edge.predicate === P.hasMember) {
-      const system = nodes.get(edge.source);
-      const member = nodes.get(edge.target);
-      if (system && member) {
-        // A System is an arbitrary logical grouping that can cross physical equipment boundaries
-        // — membership in one doesn't by itself mean physical containment. Only treat it as a
-        // real drill-in relationship when the System has boundary connection points of its own
-        // (real dots to wire up, like a breaker panel); otherwise it's purely logical, so record
-        // it for hover text instead of drawing a redundant/disconnected box for the System.
-        if (system.connectionPoints.length > 0) {
-          system.children.push({ uri: member.uri, via: "hasMember" });
-          member.parentUri = system.uri;
-          referencedAsChild.add(member.uri);
-        } else {
-          member.systemMemberships.push(system.uri);
-        }
+      if (nodes.has(edge.source) && nodes.has(edge.target)) {
+        if (!systemMembers.has(edge.source)) systemMembers.set(edge.source, []);
+        systemMembers.get(edge.source)!.push(edge.target);
       }
       continue;
     }
@@ -248,17 +281,58 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     referencedAsChild.add(node.uri);
   }
 
+  // The physical containment tree (contains/encloses/functional) is now fully resolved, so we can
+  // collapse the connection topology (needed for the "member wired to outside equipment" boundary
+  // check below) before finally deciding what to do with each System's hasMember edges.
+  const edges = collapseConnections(graph, { nodes, connectionPoints, properties, edges: [], roots: [] });
+
+  // A System is an arbitrary logical grouping that can cross physical equipment boundaries —
+  // s223:hasMember doesn't by itself mean physical containment the way s223:contains does. Decide,
+  // per System, whether it should render as its own box (real children, drill-in) or stay purely
+  // logical (membership surfaced as hover text on the members instead):
+  //   1. An explicit s223:hasBoundaryConnectionPoint always means "real box" in literal mode.
+  //   2. In inferred mode, that's overridden if most members already live inside one container
+  //      (nest the System into it — e.g. "Supply System" is really just AHU's supply-side
+  //      subdivision, its one external member notwithstanding).
+  //   3. Otherwise, in inferred mode, a System still counts as a real box if its members' wiring
+  //      actually reaches equipment outside the system, even with no explicit boundary port.
+  for (const [systemUri, memberUris] of systemMembers) {
+    const system = nodes.get(systemUri)!;
+    const hasExplicitBoundary = system.connectionPoints.length > 0;
+    let renderAsBox: boolean;
+    if (!inferSystemBoundaries) {
+      renderAsBox = hasExplicitBoundary;
+    } else if (inferMajorityContainer(nodes, memberUris)) {
+      renderAsBox = false;
+    } else {
+      renderAsBox = hasExplicitBoundary || hasExternalConnection(edges, new Set(memberUris));
+    }
+    system.systemRendersAsBox = renderAsBox;
+
+    for (const memberUri of memberUris) {
+      const member = nodes.get(memberUri)!;
+      if (renderAsBox && !referencedAsChild.has(memberUri)) {
+        system.children.push({ uri: memberUri, via: "hasMember" });
+        member.parentUri = systemUri;
+        referencedAsChild.add(memberUri);
+      } else {
+        member.systemMemberships.push(systemUri);
+      }
+    }
+  }
+
   const roots = [...nodes.values()]
     .filter((n) => !referencedAsChild.has(n.uri) && !HUB_TYPES.has(n.typeUri ?? "") && !isInvisibleSystem(n))
     .map((n) => n.uri);
 
-  return { nodes, connectionPoints, properties, edges: [], roots };
+  return { nodes, connectionPoints, properties, edges, roots };
 }
 
-/** A System with no boundary connection points is a purely logical grouping (see the hasMember
- * handling above) — it should never itself be rendered as a box, at root level or drilled into. */
+/** A System not being treated as a physical container is a purely logical grouping (see the
+ * hasMember handling above) — it should never itself be rendered as a box, at root level or
+ * drilled into. */
 export function isInvisibleSystem(n: ModelNode): boolean {
-  return n.typeUri === T.System && n.connectionPoints.length === 0;
+  return n.typeUri === T.System && !n.systemRendersAsBox;
 }
 
 export { labelOf };
