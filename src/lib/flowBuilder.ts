@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { CPKind, S223Model } from "../types/s223";
 import { projectEdges } from "./hierarchy";
-import { isInvisibleSystem } from "./modelBuilder";
+import { isSystemNode } from "./modelBuilder";
 
 export interface FlowCP {
   uri: string;
@@ -71,7 +71,7 @@ export function buildFlowElements(
 
   for (const uri of visibleUris) {
     const n = model.nodes.get(uri);
-    if (!n || isInvisibleSystem(n)) continue;
+    if (!n || isSystemNode(n)) continue;
     const connectionPoints = n.connectionPoints.map((cpUri) => toFlowCP(model, cpUri)).filter((cp): cp is FlowCP => Boolean(cp));
     const properties = n.properties.map((pUri) => toFlowProperty(model, pUri)).filter((p): p is FlowProperty => Boolean(p));
     const systemMemberships = n.systemMemberships.map((sysUri) => model.nodes.get(sysUri)?.label).filter((l): l is string => Boolean(l));

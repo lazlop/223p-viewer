@@ -15,7 +15,6 @@ import { PropertyPillNode } from "./components/nodes/PropertyPillNode";
 import { ReferenceNode } from "./components/nodes/ReferenceNode";
 import { ConnectionEdge } from "./components/edges/ConnectionEdge";
 import { InstrumentationEdge } from "./components/edges/InstrumentationEdge";
-import type { S223Model } from "./types/s223";
 import "./App.css";
 
 const EQUIPMENT_NODE_TYPES: NodeTypes = { equipmentNode: EquipmentNode };
@@ -24,21 +23,14 @@ const POINTS_NODE_TYPES: NodeTypes = { pointNode: PointNode, propertyPill: Prope
 const POINTS_EDGE_TYPES: EdgeTypes = { instrumentationEdge: InstrumentationEdge };
 
 type ViewMode = "equipment" | "points";
-type SystemDisplayMode = "equipment" | "abstracted";
-
-function buildModel(text: string, systemDisplayMode: SystemDisplayMode): S223Model {
-  const { graph } = parseTtl(text);
-  return buildS223Model(graph, { systemsAsBoxes: systemDisplayMode === "abstracted" });
-}
 
 export default function App() {
   const [source, setSource] = useState(defaultModelTtl);
   const [fileName, setFileName] = useState("nist-bdg1-1.ttl (bundled example)");
   const [containerUri, setContainerUri] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("equipment");
-  const [systemDisplayMode, setSystemDisplayMode] = useState<SystemDisplayMode>("equipment");
 
-  const model = useMemo(() => buildModel(source, systemDisplayMode), [source, systemDisplayMode]);
+  const model = useMemo(() => buildS223Model(parseTtl(source).graph), [source]);
 
   const path = useMemo(() => (containerUri ? pathTo(model, containerUri) : []), [model, containerUri]);
 
@@ -91,11 +83,6 @@ export default function App() {
     reader.readAsText(file);
   }, []);
 
-  const handleSystemDisplayModeChange = useCallback((mode: SystemDisplayMode) => {
-    setSystemDisplayMode(mode);
-    setContainerUri(null); // the containment tree can shift under a stale drill-in path
-  }, []);
-
   return (
     <div className="app">
       <header className="app__header">
@@ -115,23 +102,6 @@ export default function App() {
           </button>
         </div>
         {viewMode === "equipment" && <Breadcrumb path={path} onNavigate={setContainerUri} />}
-        <div
-          className="app__view-toggle"
-          title="How Systems (s223:System) whose members mostly live inside one container are shown: Systems: Flat flattens them into that container with membership as hover text only; Systems: Abstracted nests them as a real box you can drill into instead."
-        >
-          <button
-            className={`app__view-toggle-btn ${systemDisplayMode === "equipment" ? "app__view-toggle-btn--active" : ""}`}
-            onClick={() => handleSystemDisplayModeChange("equipment")}
-          >
-            Systems: Flat
-          </button>
-          <button
-            className={`app__view-toggle-btn ${systemDisplayMode === "abstracted" ? "app__view-toggle-btn--active" : ""}`}
-            onClick={() => handleSystemDisplayModeChange("abstracted")}
-          >
-            Systems: Abstracted
-          </button>
-        </div>
         <div className="app__file">
           <span className="app__file-name" title={fileName}>
             {fileName}

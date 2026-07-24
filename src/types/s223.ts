@@ -21,7 +21,7 @@ export interface ConnectionPointRef {
   mapsTo: string[]; // uris of corresponding connection points (e.g. an internal CP mapped to its parent's boundary CP)
 }
 
-export type ChildRelation = "contains" | "hasMember" | "encloses" | "functional";
+export type ChildRelation = "contains" | "encloses" | "functional";
 
 // The "instrumentation" layer: how a Sensor/Actuator/Function relates to a Property it senses or
 // drives, a location it observes, or (for Functions) the equipment that executes it. targetUri is
@@ -50,16 +50,11 @@ export interface ModelNode {
   children: { uri: string; via: ChildRelation }[];
   parentUri?: string;
   instrumentationLinks: InstrumentationLink[];
-  // Systems this node is s223:hasMember of, but only ones NOT being treated as a physical
-  // container (see ModelNode.systemRendersAsBox) — a System is an arbitrary logical grouping that
-  // can cross equipment boundaries, so membership in one doesn't imply physical containment.
-  // Surfaced as hover text rather than a drill-in relationship.
+  // Systems this node is s223:hasMember of — a System is an arbitrary logical grouping that can
+  // cross equipment boundaries, so membership doesn't imply physical containment the way
+  // contains/encloses does. Surfaced as hover text rather than a drill-in relationship; see
+  // modelBuilder.ts's isSystemNode.
   systemMemberships: string[]; // uris into S223Model.nodes
-  // Only meaningful when typeUri is s223:System: true when the System should render as its own
-  // box with real children (an explicit s223:hasBoundaryConnectionPoint, or — in inferred mode —
-  // topology showing a member wired to equipment outside the system, and no single container most
-  // of its members already live inside). False means it's treated as purely logical.
-  systemRendersAsBox: boolean;
 }
 
 export interface ConnectionEdge {
