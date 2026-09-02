@@ -88,19 +88,19 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
         (data.instrumentation && data.instrumentation.length > 0) ||
         (data.members && data.members.length > 0)) && (
         <div className="equipment-node__tooltip nowheel">
-          {data.groupMemberships.length > 0 && (
-            <div className="tooltip-row">
-              <strong>member of</strong> {data.groupMemberships.join(", ")}
-            </div>
-          )}
-          <PropertyRows properties={data.properties} />
-          {data.instrumentation?.map((item, i) => (
-            <div key={i} className="tooltip-row">
-              <strong>{RELATION_LABELS[item.relation]}</strong>
-              {item.targetLabel ? ` ${item.targetLabel}` : ""}
-            </div>
-          ))}
-          {data.members && <MemberRows members={data.members} onMemberClick={data.onMemberClick} />}
+           {data.members && <MemberRows members={data.members} onMemberClick={data.onMemberClick} />}
+           {data.groupMemberships.length > 0 && (
+             <div className="tooltip-row">
+               <strong>member of</strong> {data.groupMemberships.join(", ")}
+             </div>
+           )}
+           <PropertyRows properties={data.properties} />
+           {data.instrumentation?.map((item, i) => (
+             <div key={i} className="tooltip-row">
+               <strong>{RELATION_LABELS[item.relation]}</strong>
+               {item.targetLabel ? ` ${item.targetLabel}` : ""}
+             </div>
+           ))}
         </div>
       )}
     </div>

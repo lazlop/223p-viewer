@@ -35,7 +35,8 @@ export function MemberRows({ members, onMemberClick }: { members: FlowMember[]; 
 export function PropertyRows({ properties }: { properties: FlowProperty[] }) {
   if (properties.length === 0) return null;
   return (
-    <>
+    <div className="tooltip-properties">
+      <div className="tooltip-properties__header">Properties ({properties.length})</div>
       {properties.map((p, i) => (
         <div key={`${p.label}-${i}`} className="tooltip-row">
           <strong>{p.label}</strong>{" "}
@@ -43,13 +44,8 @@ export function PropertyRows({ properties }: { properties: FlowProperty[] }) {
           {p.unitSymbol && <span> {p.unitSymbol}</span>}
           {p.quantityKind && <span className="tooltip-meta"> ({p.quantityKind})</span>}
           {p.enumerationKind && <span className="tooltip-meta"> [{p.enumerationKind}]</span>}
-          {p.mapsTo.length > 0 && (
-            <div className="tooltip-ref">
-              ↦ external ref{p.mapsTo.length > 1 ? "s" : ""}: {p.mapsTo.length}
-            </div>
-          )}
         </div>
       ))}
-    </>
+    </div>
   );
 }

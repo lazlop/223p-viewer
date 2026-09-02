@@ -84,7 +84,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       connectionPoints.set(node.uri, buildConnectionPoint(node));
       continue;
     }
-    if (node.types.some(isPropertyType)) {
+    if (node.types.some(isPropertyType) || localName(node.types[0] ?? "").includes("ExternalReference")) {
       properties.set(node.uri, buildProperty(node));
       continue;
     }

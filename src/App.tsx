@@ -175,11 +175,11 @@ export default function App() {
 
       setSource(b59BuildingTtl);
       setFileName("b59-building.ttl (from BSchema member)");
-      setContainerUri(parentUri);
+      setContainerUri(ownerUri);
       setShowPoints(true);
       setShowFunctions(true);
       setShowSensorsActuators(true);
-      setHighlightUri(ownerUri);
+      setHighlightUri(null);
       setActiveTab("equipment");
     },
     [b59BuildingModel],
