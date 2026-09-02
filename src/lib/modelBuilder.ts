@@ -100,7 +100,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       properties: [],
       children: [],
       instrumentationLinks: [],
-      systemMemberships: [],
+      groupMemberships: [],
     });
   }
 
@@ -109,13 +109,27 @@ export function buildS223Model(graph: RdfGraph): S223Model {
 
   // Pass 1: connection-point ownership only. Resolved first (and fully) so System-membership
   // handling later already knows whether a given System has an explicit boundary port.
+  // Three predicates declare ownership: hasConnectionPoint/hasBoundaryConnectionPoint (equipment
+  // -> CP, the common case) and hasOptionalConnectionPoint (same direction, just marks the port as
+  // optional — ownership-wise identical). A few real 223P models instead declare it in reverse,
+  // CP -> equipment, via isConnectionPointOf.
   for (const edge of graph.edges) {
-    if (edge.predicate !== P.hasConnectionPoint && edge.predicate !== P.hasBoundaryConnectionPoint) continue;
-    const cp = connectionPoints.get(edge.target);
-    const owner = nodes.get(edge.source);
-    if (cp && owner) {
-      cp.ownerUri = owner.uri;
-      owner.connectionPoints.push(cp.uri);
+    if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint || edge.predicate === P.hasOptionalConnectionPoint) {
+      const cp = connectionPoints.get(edge.target);
+      const owner = nodes.get(edge.source);
+      if (cp && owner) {
+        cp.ownerUri = owner.uri;
+        owner.connectionPoints.push(cp.uri);
+      }
+      continue;
+    }
+    if (edge.predicate === P.isConnectionPointOf) {
+      const cp = connectionPoints.get(edge.source);
+      const owner = nodes.get(edge.target);
+      if (cp && owner && !cp.ownerUri) {
+        cp.ownerUri = owner.uri;
+        owner.connectionPoints.push(cp.uri);
+      }
     }
   }
 
@@ -135,20 +149,38 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     [P.hasOutput]: "hasOutput",
     [P.hasObservationLocation]: "hasObservationLocation",
     [P.hasPhysicalLocation]: "hasPhysicalLocation",
+    // Distinct from actuatedByProperty: points straight at the equipment/component an Actuator
+    // physically acts on (e.g. a Driver `actuates` the LightEngine it drives), not a Property.
+    [P.actuates]: "actuates",
   };
 
-  // Pass 2: everything except hasConnectionPoint/hasBoundaryConnectionPoint (done above) and
-  // hasMember (deferred — see below, it needs the physical containment tree AND the collapsed
-  // connection topology fully resolved first, to decide whether each System is a real container).
-  const systemMembers = new Map<string, string[]>(); // system uri -> member uris, in file order
+  // Pass 2: everything except hasConnectionPoint/hasBoundaryConnectionPoint/
+  // hasOptionalConnectionPoint/isConnectionPointOf (done above) and hasMember/hasDomainSpace
+  // (deferred — see below, it needs the physical containment tree AND the collapsed connection
+  // topology fully resolved first, to decide whether each group is a real container).
+  const groupMembers = new Map<string, string[]>(); // System/Zone uri -> member uris, in file order
+  // A property can also be owned by a ConnectionPoint rather than a container node (e.g. a
+  // sensor/actuator port declares `hasProperty` on itself) — recorded separately since
+  // ConnectionPoints aren't in `nodes`, and resolved through to the CP's owning equipment (once
+  // known, after the cnx-ownership fallback below) by resolveFunctionalParent.
+  const cpPropertyOwner = new Map<string, string>(); // property uri -> owning connection-point uri
   for (const edge of graph.edges) {
-    if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint) continue;
+    if (
+      edge.predicate === P.hasConnectionPoint ||
+      edge.predicate === P.hasBoundaryConnectionPoint ||
+      edge.predicate === P.hasOptionalConnectionPoint ||
+      edge.predicate === P.isConnectionPointOf
+    )
+      continue;
     if (edge.predicate === P.hasProperty) {
       const prop = properties.get(edge.target);
+      if (!prop) continue;
       const owner = nodes.get(edge.source);
-      if (prop && owner) {
+      if (owner) {
         owner.properties.push(prop.uri);
         propertyOwner.set(prop.uri, owner.uri);
+      } else if (connectionPoints.has(edge.source)) {
+        cpPropertyOwner.set(prop.uri, edge.source);
       }
       continue;
     }
@@ -164,10 +196,10 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       if (fn && nodes.has(edge.source)) fn.instrumentationLinks.push({ relation: "executedBy", targetUri: edge.source });
       continue;
     }
-    if (edge.predicate === P.hasMember) {
+    if (edge.predicate === P.hasMember || edge.predicate === P.hasDomainSpace) {
       if (nodes.has(edge.source) && nodes.has(edge.target)) {
-        if (!systemMembers.has(edge.source)) systemMembers.set(edge.source, []);
-        systemMembers.get(edge.source)!.push(edge.target);
+        if (!groupMembers.has(edge.source)) groupMembers.set(edge.source, []);
+        groupMembers.get(edge.source)!.push(edge.target);
       }
       continue;
     }
@@ -213,10 +245,13 @@ export function buildS223Model(graph: RdfGraph): S223Model {
       if (link.relation !== "observes" && link.relation !== "actuatedByProperty" && link.relation !== "hasInput" && link.relation !== "hasOutput") continue;
       const owner = propertyOwner.get(link.targetUri);
       if (owner) return owner;
+      const cpOwner = cpPropertyOwner.get(link.targetUri);
+      const cpEquipment = cpOwner ? connectionPoints.get(cpOwner)?.ownerUri : undefined;
+      if (cpEquipment) return cpEquipment;
     }
     for (const link of node.instrumentationLinks) {
-      if (link.relation !== "hasObservationLocation" && link.relation !== "hasPhysicalLocation") continue;
-      if (nodes.has(link.targetUri)) return link.targetUri; // points straight at a Space/Zone container
+      if (link.relation !== "hasObservationLocation" && link.relation !== "hasPhysicalLocation" && link.relation !== "actuates") continue;
+      if (nodes.has(link.targetUri)) return link.targetUri; // points straight at a Space/Zone/Equipment container
       const cp = connectionPoints.get(link.targetUri);
       if (cp?.ownerUri) return cp.ownerUri;
     }
@@ -235,26 +270,65 @@ export function buildS223Model(graph: RdfGraph): S223Model {
 
   const edges = collapseConnections(graph, { nodes, connectionPoints, properties, edges: [], roots: [] });
 
-  // A System is an arbitrary logical grouping (s223:hasMember) that can cross physical equipment
-  // boundaries, unlike s223:contains/encloses — membership never implies physical containment. A
-  // System is therefore always purely logical: never its own box, at root level or drilled into
-  // (see isSystemNode). Membership is surfaced only as hover text ("member of <System>") on each
-  // member, wherever it actually lives via contains/encloses/functional.
-  for (const [systemUri, memberUris] of systemMembers) {
+  // A System (s223:hasMember) or Zone (s223:hasDomainSpace) is an arbitrary logical grouping that
+  // can cross physical equipment/space boundaries, unlike s223:contains/encloses — membership
+  // never implies physical containment. Both are therefore always purely logical: never their own
+  // box, at root level or drilled into (see isLogicalGroupNode). Membership is surfaced only as
+  // hover text ("member of <group>") on each member, wherever it actually lives via
+  // contains/encloses/functional.
+  for (const [groupUri, memberUris] of groupMembers) {
     for (const memberUri of memberUris) {
-      nodes.get(memberUri)!.systemMemberships.push(systemUri);
+      nodes.get(memberUri)!.groupMemberships.push(groupUri);
     }
   }
 
   const roots = [...nodes.values()]
-    .filter((n) => !referencedAsChild.has(n.uri) && !HUB_TYPES.has(n.typeUri ?? "") && !isSystemNode(n))
+    .filter((n) => !referencedAsChild.has(n.uri) && !HUB_TYPES.has(n.typeUri ?? "") && !isLogicalGroupNode(n) && !isInstrumentationNode(n))
     .map((n) => n.uri);
 
   return { nodes, connectionPoints, properties, edges, roots };
 }
 
-export function isSystemNode(n: ModelNode): boolean {
-  return n.typeUri === T.System;
+export function isLogicalGroupNode(n: ModelNode): boolean {
+  return n.typeUri === T.System || n.typeUri === T.Zone;
+}
+
+const INSTRUMENTATION_TYPE_SUFFIXES = ["Sensor", "Actuator", "Function"];
+
+/**
+ * Sensors/Actuators/Functions (and Thermostats, which combine a Sensor + Function role) belong to
+ * the Sensors & Controls view, not Equipment — but real 223P data leaves a good number of them
+ * with no genuine physical containment (no contains/encloses, and no functional-parent match
+ * either — see resolveFunctionalParent above). Left alone those surface as bare, wireless root
+ * boxes in Equipment view (no connection points, so no edges ever reach them) — pure clutter, and
+ * confusing since they duplicate content the Sensors & Controls view already shows properly.
+ * Only excludes them from becoming ROOTS: one that genuinely has a contains/encloses parent (e.g.
+ * a FlowSensor physically inside a VAV box) is unaffected and still renders normally once you
+ * drill into that parent.
+ */
+function isInstrumentationNode(n: ModelNode): boolean {
+  const name = n.typeName ?? "";
+  return name === "Thermostat" || INSTRUMENTATION_TYPE_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+// hasObservationLocation/hasPhysicalLocation are excluded on purpose: real 223P data (e.g.
+// Luminaire fixtures declaring `hasPhysicalLocation` straight to their room) uses them on
+// ordinary equipment just to site it, not to claim it senses or drives anything. The other six
+// relations are only ever meaningful on a genuine Sensor/Actuator/Function/Thermostat, so they're
+// what the Equipment view's Sensors & Controls toggle uses to decide what counts as a "point" for
+// color-coding and instrumentation edges (see flowBuilder.ts, pointsFlowBuilder.ts) — structural,
+// like isInstrumentationNode above, but narrower than "has any InstrumentationLink at all".
+const CORE_INSTRUMENTATION_RELATIONS = new Set<InstrumentationRelation>([
+  "observes",
+  "actuatedByProperty",
+  "hasInput",
+  "hasOutput",
+  "executedBy",
+  "actuates",
+]);
+
+export function hasCoreInstrumentation(n: ModelNode): boolean {
+  return n.instrumentationLinks.some((link) => CORE_INSTRUMENTATION_RELATIONS.has(link.relation));
 }
 
 export { labelOf };

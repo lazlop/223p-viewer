@@ -14,6 +14,8 @@ export const P = {
   encloses: s223("encloses"),
   hasConnectionPoint: s223("hasConnectionPoint"),
   hasBoundaryConnectionPoint: s223("hasBoundaryConnectionPoint"),
+  hasOptionalConnectionPoint: s223("hasOptionalConnectionPoint"),
+  isConnectionPointOf: s223("isConnectionPointOf"),
   cnx: s223("cnx"),
   connectsThrough: s223("connectsThrough"),
   hasProperty: s223("hasProperty"),
@@ -30,6 +32,8 @@ export const P = {
   hasInput: s223("hasInput"),
   hasOutput: s223("hasOutput"),
   executes: s223("executes"),
+  hasDomainSpace: s223("hasDomainSpace"),
+  actuates: s223("actuates"),
 };
 
 // Types

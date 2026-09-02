@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { FlowCP, FlowNodeData } from "../../lib/flowBuilder";
+import { RELATION_LABELS } from "../../lib/pointsFlowBuilder";
 import { PropertyRows } from "../PropertyTooltip";
 
 type EquipmentNodeType = Node<FlowNodeData, "equipmentNode">;
@@ -55,9 +56,21 @@ function ConnectionDot({ cp, position, offsetPct }: { cp: FlowCP; position: Posi
 export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
   const left = data.connectionPoints.filter((cp) => sideFor(cp) === Position.Left);
   const right = data.connectionPoints.filter((cp) => sideFor(cp) === Position.Right);
+  const pointClass = data.pointKind ? ` equipment-node--point equipment-node--point-${data.pointKind}` : "";
+  const mutedClass = data.muted ? " equipment-node--muted" : "";
 
   return (
-    <div className={`equipment-node equipment-node--${data.kind}`}>
+    <div className={`equipment-node equipment-node--${data.kind}${pointClass}${mutedClass}`}>
+      {/* Handle-less fallback anchor: a "rolled up" connection edge (its real endpoint is nested
+          inside a container that isn't expanded at this view level — see hierarchy.ts::projectEdges)
+          carries no sourceHandle/targetHandle id, since it doesn't correspond to one exact
+          connection point. Without an id-less Handle to match against, React Flow can't anchor the
+          edge at all and silently drops it — this hit every rolled-up edge landing on a node with
+          zero owned connection points (e.g. Floor1, a pure container) and even ones with real CP
+          handles (the rollup still doesn't reference any specific one). One invisible handle of
+          each type keeps those edges rendering without altering the visible per-CP dots. */}
+      <Handle type="target" position={Position.Left} className="equipment-node__fallback-handle" />
+      <Handle type="source" position={Position.Left} className="equipment-node__fallback-handle" />
       {left.map((cp, i) => (
         <ConnectionDot key={cp.uri} cp={cp} position={Position.Left} offsetPct={((i + 1) / (left.length + 1)) * 100} />
       ))}
@@ -69,14 +82,20 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
       {data.typeName && <div className="equipment-node__type">{data.typeName}</div>}
       {data.hasChildren && <div className="equipment-node__hint">double-click to open</div>}
 
-      {(data.properties.length > 0 || data.systemMemberships.length > 0) && (
+      {(data.properties.length > 0 || data.groupMemberships.length > 0 || (data.instrumentation && data.instrumentation.length > 0)) && (
         <div className="equipment-node__tooltip">
-          {data.systemMemberships.length > 0 && (
+          {data.groupMemberships.length > 0 && (
             <div className="tooltip-row">
-              <strong>member of</strong> {data.systemMemberships.join(", ")}
+              <strong>member of</strong> {data.groupMemberships.join(", ")}
             </div>
           )}
           <PropertyRows properties={data.properties} />
+          {data.instrumentation?.map((item, i) => (
+            <div key={i} className="tooltip-row">
+              <strong>{RELATION_LABELS[item.relation]}</strong>
+              {item.targetLabel ? ` ${item.targetLabel}` : ""}
+            </div>
+          ))}
         </div>
       )}
     </div>

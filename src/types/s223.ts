@@ -33,6 +33,7 @@ export type InstrumentationRelation =
   | "hasOutput"
   | "hasObservationLocation"
   | "hasPhysicalLocation"
+  | "actuates"
   | "executedBy";
 
 export interface InstrumentationLink {
@@ -50,11 +51,11 @@ export interface ModelNode {
   children: { uri: string; via: ChildRelation }[];
   parentUri?: string;
   instrumentationLinks: InstrumentationLink[];
-  // Systems this node is s223:hasMember of — a System is an arbitrary logical grouping that can
-  // cross equipment boundaries, so membership doesn't imply physical containment the way
-  // contains/encloses does. Surfaced as hover text rather than a drill-in relationship; see
-  // modelBuilder.ts's isSystemNode.
-  systemMemberships: string[]; // uris into S223Model.nodes
+  // Logical groups (s223:System via hasMember, s223:Zone via hasDomainSpace) this node belongs
+  // to. Both are arbitrary groupings that can cross equipment/space boundaries, so membership
+  // doesn't imply physical containment the way contains/encloses does. Surfaced as hover text
+  // rather than a drill-in relationship; see modelBuilder.ts's isLogicalGroupNode.
+  groupMemberships: string[]; // uris into S223Model.nodes
 }
 
 export interface ConnectionEdge {
