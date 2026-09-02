@@ -17,7 +17,17 @@ export interface ConnectionPointRef {
   label: string;
   kind: CPKind;
   medium?: string;
-  ownerUri?: string; // equipment/system/space that owns it via hasConnectionPoint
+  ownerUri?: string; // equipment/system/space that owns it via hasConnectionPoint — the first claim seen; see ownerUris
+  // Every distinct owner that claims this CP via hasConnectionPoint/hasBoundaryConnectionPoint/
+  // hasOptionalConnectionPoint/isConnectionPointOf, in first-seen order (ownerUri is ownerUris[0]).
+  // In a real building model a CP has exactly one true owner, so this is almost always length <= 1.
+  // A bschema class graph is different: bschema-rs buckets many distinct real connection points —
+  // each with its own real owner — into one summary ConnectionPoint node whenever they look alike,
+  // so the same bschema CP can legitimately be `isConnectionPointOf` a dozen different bschema
+  // classes at once. connectionTopology.ts pairs across every owner on each side (not just the
+  // first) so those classes still show as connected instead of silently losing 2..n-1 of their
+  // real connections to whichever owner was encountered first.
+  ownerUris: string[];
   mapsTo: string[]; // uris of corresponding connection points (e.g. an internal CP mapped to its parent's boundary CP)
 }
 

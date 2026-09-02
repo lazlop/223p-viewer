@@ -40,6 +40,7 @@ function buildConnectionPoint(node: RdfNode): ConnectionPointRef {
     kind: cpKindOf(node),
     medium: mediumProp ? localName(mediumProp.object) : undefined,
     ownerUri: undefined,
+    ownerUris: [],
     mapsTo,
   };
 }
@@ -113,25 +114,33 @@ export function buildS223Model(graph: RdfGraph): S223Model {
   // -> CP, the common case) and hasOptionalConnectionPoint (same direction, just marks the port as
   // optional — ownership-wise identical). A few real 223P models instead declare it in reverse,
   // CP -> equipment, via isConnectionPointOf. Some data (e.g. bschema-rs's generated class graphs)
-  // redundantly asserts both directions for the same pair — guarded by `!cp.ownerUri` on both
-  // branches (not just isConnectionPointOf) so whichever direction is processed first wins and the
-  // second is a no-op, instead of double-pushing the CP into owner.connectionPoints.
+  // redundantly asserts both directions for the same pair, and can legitimately claim a single CP
+  // from several different owners at once (see ConnectionPointRef.ownerUris) — every distinct
+  // claim is recorded in cp.ownerUris, deduped, while `cp.ownerUri` and owner.connectionPoints
+  // still only take the first claim (guarded by `!cp.ownerUri`), so containment/hover/kind
+  // rendering is unaffected and only connectionTopology.ts's edge pairing sees the extra owners.
   for (const edge of graph.edges) {
     if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint || edge.predicate === P.hasOptionalConnectionPoint) {
       const cp = connectionPoints.get(edge.target);
       const owner = nodes.get(edge.source);
-      if (cp && owner && !cp.ownerUri) {
-        cp.ownerUri = owner.uri;
-        owner.connectionPoints.push(cp.uri);
+      if (cp && owner) {
+        if (!cp.ownerUris.includes(owner.uri)) cp.ownerUris.push(owner.uri);
+        if (!cp.ownerUri) {
+          cp.ownerUri = owner.uri;
+          owner.connectionPoints.push(cp.uri);
+        }
       }
       continue;
     }
     if (edge.predicate === P.isConnectionPointOf) {
       const cp = connectionPoints.get(edge.source);
       const owner = nodes.get(edge.target);
-      if (cp && owner && !cp.ownerUri) {
-        cp.ownerUri = owner.uri;
-        owner.connectionPoints.push(cp.uri);
+      if (cp && owner) {
+        if (!cp.ownerUris.includes(owner.uri)) cp.ownerUris.push(owner.uri);
+        if (!cp.ownerUri) {
+          cp.ownerUri = owner.uri;
+          owner.connectionPoints.push(cp.uri);
+        }
       }
     }
   }
@@ -232,6 +241,7 @@ export function buildS223Model(graph: RdfGraph): S223Model {
     const cp = connectionPoints.get(edge.target);
     if (!owner || !cp || cp.ownerUri || HUB_TYPES.has(owner.typeUri ?? "")) continue;
     cp.ownerUri = owner.uri;
+    cp.ownerUris.push(owner.uri);
     owner.connectionPoints.push(cp.uri);
   }
 

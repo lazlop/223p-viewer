@@ -66,7 +66,7 @@ export function collapseConnections(graph: RdfGraph, model: S223Model): Connecti
   for (const [root, { cps, hubs }] of components) {
     const owned = cps
       .map((uri) => model.connectionPoints.get(uri)!)
-      .filter((cp) => cp.ownerUri); // drop CPs nobody owns via hasConnectionPoint
+      .filter((cp) => cp.ownerUris.length > 0); // drop CPs nobody owns via hasConnectionPoint
     if (owned.length < 2) continue; // dangling hub, nothing to draw
 
     const outlets = owned.filter((cp) => cp.kind === "Outlet");
@@ -91,21 +91,29 @@ export function collapseConnections(graph: RdfGraph, model: S223Model): Connecti
     const hubProperties = hubs.flatMap((uri) => model.nodes.get(uri)?.properties ?? []);
     const medium = owned.find((cp) => cp.medium)?.medium;
 
+    // Ordinarily a CP has exactly one owner, so this is just one edge per pair as before. A
+    // bschema CP can carry several (see ConnectionPointRef.ownerUris) — pair every owner on one
+    // side against every owner on the other so a class shared by many bschema classes still links
+    // all of them, instead of only whichever owner modelBuilder.ts happened to resolve first.
     for (const [fromCPUri, toCPUri] of pairs) {
       const fromCP = model.connectionPoints.get(fromCPUri)!;
       const toCP = model.connectionPoints.get(toCPUri)!;
-      if (fromCP.ownerUri === toCP.ownerUri) continue; // skip self-loops within the same equipment
-      edges.push({
-        id: `${root}::${fromCPUri}::${toCPUri}`,
-        hubUri: root,
-        hubLabel,
-        medium,
-        fromEquipmentUri: fromCP.ownerUri!,
-        fromCPUri,
-        toEquipmentUri: toCP.ownerUri!,
-        toCPUri,
-        properties: hubProperties,
-      });
+      for (const fromOwner of fromCP.ownerUris) {
+        for (const toOwner of toCP.ownerUris) {
+          if (fromOwner === toOwner) continue; // skip self-loops within the same equipment
+          edges.push({
+            id: `${root}::${fromCPUri}::${toCPUri}::${fromOwner}::${toOwner}`,
+            hubUri: root,
+            hubLabel,
+            medium,
+            fromEquipmentUri: fromOwner,
+            fromCPUri,
+            toEquipmentUri: toOwner,
+            toCPUri,
+            properties: hubProperties,
+          });
+        }
+      }
     }
   }
 
