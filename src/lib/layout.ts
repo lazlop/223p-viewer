@@ -13,6 +13,10 @@ const HEIGHT_PER_CP = 18;
 const MAX_CP_SIDE = 8; // beyond this many CPs on one side, height stops growing (dots get denser instead)
 const COMPONENT_GAP = 60;
 const MAX_ROW_WIDTH = 1600;
+// Connection-junction nodes (see pointsFlowBuilder.ts) are a bare waypoint dot, not a box with
+// content — sized like the connection-point dots on an equipment node's edge, not like a full
+// NODE_WIDTH-wide box, so dagre doesn't reserve a whole equipment-sized slot for them.
+const JUNCTION_SIZE = 14;
 
 // A single dagre pass produces a reasonably clean layout for small/tree-like components, but for
 // larger, densely-interlinked ones (e.g. a Sensors & Controls "instrumentation cluster" where many
@@ -35,6 +39,11 @@ const MAX_CROSSING_TRIALS = 40;
 export function nodeHeight(cpCount: number): number {
   const perSide = Math.min(Math.ceil(cpCount / 2), MAX_CP_SIDE);
   return Math.max(BASE_HEIGHT, BASE_HEIGHT + perSide * HEIGHT_PER_CP);
+}
+
+function nodeDims<T extends Record<string, unknown>>(node: Node<T>, getCpCount: (node: Node<T>) => number): { width: number; height: number } {
+  if (node.type === "connectionJunction") return { width: JUNCTION_SIZE, height: JUNCTION_SIZE };
+  return { width: NODE_WIDTH, height: nodeHeight(getCpCount(node)) };
 }
 
 function connectedComponents<T extends Record<string, unknown>>(nodes: Node<T>[], edges: Edge[]): Node<T>[][] {
@@ -131,7 +140,7 @@ function runDagre<T extends Record<string, unknown>>(
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: direction, nodesep, ranksep });
   for (const node of nodeOrder) {
-    g.setNode(node.id, { width: NODE_WIDTH, height: nodeHeight(getCpCount(node)) });
+    g.setNode(node.id, nodeDims(node, getCpCount));
   }
   for (const edge of edgeOrder) g.setEdge(edge.source, edge.target);
   dagre.layout(g);
@@ -153,8 +162,8 @@ function layoutComponent<T extends Record<string, unknown>>(
   // overhead once per node. At real-building scale (hundreds of singleton components) this is the
   // difference between the shelf-packing pass finishing near-instantly and taking several seconds.
   if (nodes.length === 1) {
-    const height = nodeHeight(getCpCount(nodes[0]));
-    return { nodes: [{ ...nodes[0], position: { x: 0, y: 0 }, style: { ...nodes[0].style, width: NODE_WIDTH, height } }], width: NODE_WIDTH, height };
+    const { width, height } = nodeDims(nodes[0], getCpCount);
+    return { nodes: [{ ...nodes[0], position: { x: 0, y: 0 }, style: { ...nodes[0].style, width, height } }], width, height };
   }
 
   let best: Graph;
@@ -194,14 +203,14 @@ function layoutComponent<T extends Record<string, unknown>>(
   let maxY = -Infinity;
   const positioned = nodes.map((node) => {
     const pos = best.node(node.id);
-    const height = nodeHeight(getCpCount(node));
-    const left = pos.x - NODE_WIDTH / 2;
+    const { width, height } = nodeDims(node, getCpCount);
+    const left = pos.x - width / 2;
     const top = pos.y - height / 2;
     minX = Math.min(minX, left);
     minY = Math.min(minY, top);
-    maxX = Math.max(maxX, left + NODE_WIDTH);
+    maxX = Math.max(maxX, left + width);
     maxY = Math.max(maxY, top + height);
-    return { ...node, position: { x: left, y: top }, style: { ...node.style, width: NODE_WIDTH, height } };
+    return { ...node, position: { x: left, y: top }, style: { ...node.style, width, height } };
   });
 
   // Normalize this component's positions to start at (0, 0) so it can be shelf-packed independently.
