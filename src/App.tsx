@@ -15,14 +15,27 @@ import { FlowCanvas } from "./components/FlowCanvas";
 import { Breadcrumb } from "./components/Breadcrumb";
 import { EquipmentNode } from "./components/nodes/EquipmentNode";
 import { PropertyPillNode } from "./components/nodes/PropertyPillNode";
+import { ConnectionJunctionNode } from "./components/nodes/ConnectionJunctionNode";
 import { ConnectionEdge } from "./components/edges/ConnectionEdge";
 import { InstrumentationEdge } from "./components/edges/InstrumentationEdge";
 import "./App.css";
 
-const EQUIPMENT_NODE_TYPES: NodeTypes = { equipmentNode: EquipmentNode, propertyPill: PropertyPillNode };
+const EQUIPMENT_NODE_TYPES: NodeTypes = {
+  equipmentNode: EquipmentNode,
+  propertyPill: PropertyPillNode,
+  connectionJunction: ConnectionJunctionNode,
+};
 const EQUIPMENT_EDGE_TYPES: EdgeTypes = { connectionEdge: ConnectionEdge, instrumentationEdge: InstrumentationEdge };
 
 type ViewTab = "equipment" | "bschema";
+
+// layoutGraph's node-height heuristic keys off connection-point count, which only equipmentNode
+// data carries — propertyPill and connectionJunction nodes have neither, so this reads as 0 for
+// them and they fall back to the base node height.
+function cpCountOf(n: { data: unknown }): number {
+  const cp = (n.data as Record<string, unknown>).connectionPoints;
+  return Array.isArray(cp) ? cp.length : 0;
+}
 
 // Equipment view's quick-switch dropdown, alongside the file picker: `ttl` values are the exact
 // raw-imported strings, so reference equality against `source` (see currentBundledId below) also
@@ -89,13 +102,17 @@ export default function App() {
     let nodes: (typeof flow.nodes[number] | ReturnType<typeof buildInstrumentationOverlay>["nodes"][number])[] = flow.nodes;
     let edges = flow.edges;
     if (overlay) {
-      edges = [...edges, ...overlay.edges];
+      edges = [
+        ...edges.filter((e) => !overlay.replacedConnectionEdgeIds.has(e.id)),
+        ...overlay.edges,
+        ...overlay.connectionSegmentEdges,
+      ];
       nodes = [
         ...flow.nodes.map((n) => (overlay.summaries.has(n.id) ? { ...n, data: { ...n.data, instrumentation: overlay.summaries.get(n.id) } } : n)),
         ...overlay.nodes,
       ];
     }
-    const laidOutNodes = layoutGraph(nodes, edges, (n) => ("connectionPoints" in n.data ? n.data.connectionPoints.length : 0)).map((n) =>
+    const laidOutNodes = layoutGraph(nodes, edges, cpCountOf).map((n) =>
       highlightUri && n.id === highlightUri ? { ...n, data: { ...n.data, highlighted: true } } : n,
     );
     return { nodes: laidOutNodes, edges };
@@ -198,7 +215,11 @@ export default function App() {
     let nodes: (typeof flow.nodes[number] | ReturnType<typeof buildInstrumentationOverlay>["nodes"][number])[] = flow.nodes;
     let edges = flow.edges;
     if (overlay) {
-      edges = [...edges, ...overlay.edges];
+      edges = [
+        ...edges.filter((e) => !overlay.replacedConnectionEdgeIds.has(e.id)),
+        ...overlay.edges,
+        ...overlay.connectionSegmentEdges,
+      ];
       nodes = [
         ...flow.nodes.map((n) => (overlay.summaries.has(n.id) ? { ...n, data: { ...n.data, instrumentation: overlay.summaries.get(n.id) } } : n)),
         ...overlay.nodes,
@@ -214,7 +235,7 @@ export default function App() {
       }));
       return { ...n, data: { ...n.data, members, onMemberClick: handleMemberClick } };
     });
-    const laidOutNodes = layoutGraph(processedNodes, edges, (n) => ("connectionPoints" in n.data ? n.data.connectionPoints.length : 0));
+    const laidOutNodes = layoutGraph(processedNodes, edges, cpCountOf);
     return { nodes: laidOutNodes, edges };
   }, [bschemaModel, bschemaVisibleUris, bschemaMembers, b59BuildingModel, handleMemberClick, showPoints, showFunctions, showSensorsActuators, showAllProperties]);
 

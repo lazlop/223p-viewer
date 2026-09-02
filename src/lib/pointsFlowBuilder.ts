@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { InstrumentationLink, InstrumentationRelation, ModelNode, S223Model } from "../types/s223";
-import { isVisiblePoint, type FlowInstrumentationItem } from "./flowBuilder";
-import { nearestVisibleAncestor } from "./hierarchy";
+import { isVisiblePoint, toFlowProperty, type FlowEdgeData, type FlowInstrumentationItem } from "./flowBuilder";
+import { nearestVisibleAncestor, projectEdges } from "./hierarchy";
 
 export type PointsRelation = InstrumentationRelation | "hasProperty";
 
@@ -35,7 +35,13 @@ export interface PropertyPillNodeData extends Record<string, unknown> {
   mapsTo: string[];
 }
 
+/** A tiny waypoint node spliced into a physical connection arrow (see the "connection-owned
+ * properties" pass below) so a property pill has something concrete to point an edge at, instead
+ * of at the connection line itself — React Flow edges connect nodes, not other edges. */
+export type ConnectionJunctionNodeData = Record<string, unknown>;
+
 const propertyPillId = (uri: string) => `points-prop::${uri}`;
+const connectionJunctionId = (edgeId: string) => `conn-junction::${edgeId}`;
 
 function isPropertyRelation(relation: InstrumentationRelation): boolean {
   return relation === "observes" || relation === "actuatedByProperty" || relation === "hasInput" || relation === "hasOutput";
@@ -90,6 +96,18 @@ function isPropertyRelation(relation: InstrumentationRelation): boolean {
  * touches at all (e.g. a plain on/off status nobody instruments). This is unrelated to the points
  * loop above (it doesn't pull in any new equipment boxes, just pills for what's already shown), so
  * it always lands a direct, un-rolled-up edge straight to the owner.
+ *
+ * A Property can also be owned by a physical Connection itself rather than by either equipment it
+ * joins (e.g. b59's "RTU_1.mixed_air" duct segment `hasProperty`s a mixed-air Temperature — real
+ * 223P data instruments the duct, not the damper or the filter on either side of it). That owner
+ * is a hub node (collapseConnections absorbs it into the connection arrow rather than rendering it
+ * as its own box), so it never appears in any equipment's `.properties` list and the loop above
+ * can't reach it. `showAllProperties` also walks every connection arrow visible at this level and,
+ * for each one carrying hub-level properties, adds a pill wired to a small junction node spliced
+ * into that exact arrow (splitting it into two segments through the junction) — the closest visual
+ * equivalent of "an edge pointing at another edge" React Flow's node-to-node edges allow. Skipped
+ * for rolled-up arrows (endpoint walked up to a container that isn't the true owner) since there's
+ * no single real arrow to splice the property onto.
  */
 export function buildInstrumentationOverlay(
   model: S223Model,
@@ -98,18 +116,25 @@ export function buildInstrumentationOverlay(
   showSensorsActuators: boolean,
   showAllProperties: boolean,
 ): {
-  nodes: Node<PropertyPillNodeData>[];
+  nodes: Node<PropertyPillNodeData | ConnectionJunctionNodeData>[];
   edges: Edge<PointsFlowEdgeData>[];
+  connectionSegmentEdges: Edge<FlowEdgeData>[];
   summaries: Map<string, FlowInstrumentationItem[]>;
   extraPointUris: Set<string>;
+  /** ids of the plain connection arrows (ProjectedEdge.id, i.e. flowBuilder's connectionEdge id)
+   * that got spliced into two segments above — the caller must drop the original single-arrow
+   * edge for each of these so the connection doesn't render twice. */
+  replacedConnectionEdgeIds: Set<string>;
 } {
   const propertyOwner = new Map<string, string>();
   for (const n of model.nodes.values()) {
     for (const propUri of n.properties) propertyOwner.set(propUri, n.uri);
   }
 
-  const nodes: Node<PropertyPillNodeData>[] = [];
+  const nodes: Node<PropertyPillNodeData | ConnectionJunctionNodeData>[] = [];
   const edges: Edge<PointsFlowEdgeData>[] = [];
+  const connectionSegmentEdges: Edge<FlowEdgeData>[] = [];
+  const replacedConnectionEdgeIds = new Set<string>();
   const summaries = new Map<string, FlowInstrumentationItem[]>();
   const extraPointUris = new Set<string>();
   const addedProperties = new Set<string>();
@@ -235,5 +260,59 @@ export function buildInstrumentationOverlay(
     processPoint(n);
   }
 
-  return { nodes, edges, summaries, extraPointUris };
+  // Connection-owned properties (e.g. a duct segment's own Temperature, not either equipment it
+  // joins) — see the doc comment above. Runs over every connection arrow visible at this level,
+  // independent of the points passes above.
+  if (showAllProperties) {
+    for (const pe of projectEdges(model, visibleUris)) {
+      if (pe.rolledUp) continue; // no single real arrow to splice the property onto
+      const hub = pe.raw[0];
+      if (hub.properties.length === 0) continue;
+
+      const junctionId = connectionJunctionId(pe.id);
+      nodes.push({ id: junctionId, type: "connectionJunction", position: { x: 0, y: 0 }, data: {} });
+      replacedConnectionEdgeIds.add(pe.id);
+
+      connectionSegmentEdges.push(
+        {
+          id: `${pe.id}::seg1`,
+          source: pe.source,
+          sourceHandle: pe.sourceHandle,
+          target: junctionId,
+          targetHandle: "in",
+          type: "connectionEdge",
+          data: { hubLabel: hub.hubLabel, medium: hub.medium, properties: [], rolledUp: false },
+        },
+        {
+          id: `${pe.id}::seg2`,
+          source: junctionId,
+          sourceHandle: "out",
+          target: pe.target,
+          targetHandle: pe.targetHandle,
+          type: "connectionEdge",
+          data: {
+            hubLabel: hub.hubLabel,
+            medium: hub.medium,
+            properties: hub.properties.map((uri) => toFlowProperty(model, uri)).filter((p): p is NonNullable<typeof p> => Boolean(p)),
+            rolledUp: false,
+          },
+        },
+      );
+
+      for (const propUri of hub.properties) {
+        const pillId = ensurePropertyPill(propUri);
+        if (!pillId) continue;
+        edges.push({
+          id: `conn-junction-prop::${pe.id}::${propUri}`,
+          source: pillId,
+          target: junctionId,
+          targetHandle: "prop",
+          type: "instrumentationEdge",
+          data: { relation: "hasProperty", rolledUp: false },
+        });
+      }
+    }
+  }
+
+  return { nodes, edges, connectionSegmentEdges, summaries, extraPointUris, replacedConnectionEdgeIds };
 }

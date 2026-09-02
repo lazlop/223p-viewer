@@ -417,6 +417,34 @@
   color: var(--text-muted);
 }
 
+/* Connection junction: an otherwise-invisible waypoint spliced into a connection arrow so a
+   connection-owned property's pill has a real node to point at (see pointsFlowBuilder.ts). Same
+   dot styling as .connection-edge-dot, just permanently visible instead of hover-only. */
+.connection-junction-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.connection-junction-node__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #495057;
+  border: 2px solid var(--bg);
+}
+.connection-junction-node .react-flow__handle {
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: transparent;
+}
+
 /* De-emphasize pure structural boxes (no properties, no instrumentation of their own) while the
    toggle is on, so property- and instrumentation-bearing equipment is easy to pick out — without
    hiding them outright, so the containment hierarchy they sit in stays intact. */
