@@ -147,6 +147,16 @@ function layoutComponent<T extends Record<string, unknown>>(
   const nodeIds = new Set(nodes.map((n) => n.id));
   const componentEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 
+  // A lone, edgeless node (real 223P/bschema data can produce hundreds of these — e.g.
+  // ExternalReference clutter with no s223:contains and no connection points) has nothing for
+  // dagre to lay out; skip straight to (0, 0) instead of paying its full graph-construction
+  // overhead once per node. At real-building scale (hundreds of singleton components) this is the
+  // difference between the shelf-packing pass finishing near-instantly and taking several seconds.
+  if (nodes.length === 1) {
+    const height = nodeHeight(getCpCount(nodes[0]));
+    return { nodes: [{ ...nodes[0], position: { x: 0, y: 0 }, style: { ...nodes[0].style, width: NODE_WIDTH, height } }], width: NODE_WIDTH, height };
+  }
+
   let best: Graph;
   if (nodes.length < DENSE_COMPONENT_NODE_THRESHOLD) {
     // Small component: single pass, original insertion order, original spacing — identical to

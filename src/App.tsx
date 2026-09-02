@@ -24,6 +24,14 @@ const EQUIPMENT_EDGE_TYPES: EdgeTypes = { connectionEdge: ConnectionEdge, instru
 
 type ViewTab = "equipment" | "bschema";
 
+// Equipment view's quick-switch dropdown, alongside the file picker: `ttl` values are the exact
+// raw-imported strings, so reference equality against `source` (see currentBundledId below) also
+// picks up b59 as "selected" after a BSchema member-click jump, which loads the same string.
+const BUNDLED_EXAMPLES = [
+  { id: "nist-bdg1-1", label: "nist-bdg1-1.ttl (bundled example)", ttl: defaultModelTtl },
+  { id: "b59-building", label: "b59-building.ttl (bundled example)", ttl: b59BuildingTtl },
+] as const;
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ViewTab>("equipment");
 
@@ -107,22 +115,37 @@ export default function App() {
     setHighlightUri(null);
   }, []);
 
-  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSource(String(reader.result));
-      setFileName(file.name);
-      setContainerUri(null);
-      setShowPoints(false);
-      setShowFunctions(false);
-      setShowSensorsActuators(true);
-      setShowAllProperties(false);
-      setHighlightUri(null);
-    };
-    reader.readAsText(file);
+  const loadSource = useCallback((ttl: string, name: string) => {
+    setSource(ttl);
+    setFileName(name);
+    setContainerUri(null);
+    setShowPoints(false);
+    setShowFunctions(false);
+    setShowSensorsActuators(true);
+    setShowAllProperties(false);
+    setHighlightUri(null);
   }, []);
+
+  const handleFileChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => loadSource(String(reader.result), file.name);
+      reader.readAsText(file);
+    },
+    [loadSource],
+  );
+
+  const handleBundledSelect = useCallback(
+    (e: ChangeEvent<HTMLSelectElement>) => {
+      const found = BUNDLED_EXAMPLES.find((b) => b.id === e.target.value);
+      if (found) loadSource(found.ttl, found.label);
+    },
+    [loadSource],
+  );
+
+  const currentBundledId = useMemo(() => BUNDLED_EXAMPLES.find((b) => b.ttl === source)?.id ?? "", [source]);
 
   // BSchema view: same single-level containment drill-down as Equipment view, over the bschema
   // class graph instead of a real building — see bschemaModel above.
@@ -252,6 +275,16 @@ export default function App() {
               <span className="app__file-name" title={fileName}>
                 {fileName}
               </span>
+              <select className="app__bundled-select" value={currentBundledId} onChange={handleBundledSelect}>
+                <option value="" disabled>
+                  Bundled example…
+                </option>
+                {BUNDLED_EXAMPLES.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
               <label className="app__file-button">
                 Load .ttl
                 <input type="file" accept=".ttl,text/turtle" onChange={handleFileChange} hidden />
@@ -273,7 +306,7 @@ export default function App() {
               edges={equipmentFlow.edges}
               nodeTypes={EQUIPMENT_NODE_TYPES}
               edgeTypes={EQUIPMENT_EDGE_TYPES}
-              viewKey={`${containerUri ?? "__root__"}::${showPoints}::${showFunctions}::${showSensorsActuators}::${showAllProperties}`}
+              viewKey={`${fileName}::${containerUri ?? "__root__"}::${showPoints}::${showFunctions}::${showSensorsActuators}::${showAllProperties}`}
               focusNodeId={highlightUri ?? undefined}
               onNodeDoubleClick={handleNodeDoubleClick}
             />

@@ -95,6 +95,16 @@
   background: #f0f2f5;
 }
 
+.app__bundled-select {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
 .app__canvas {
   flex: 1;
   min-height: 0;
