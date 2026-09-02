@@ -117,9 +117,21 @@ export function buildFlowElements(
   showFunctions = false,
   showSensorsActuators = true,
 ): { nodes: Node<FlowNodeData>[]; edges: Edge<FlowEdgeData>[] } {
+  // Sensors/Actuators/Functions/Controllers are the Sensors & Controls overlay's content, not
+  // plain Equipment's — with the toggle off, drop them (and route any edges around them) even
+  // when they're genuine s223:contains/encloses tree children, so e.g. a FlowSensor physically
+  // inside a VAV box only appears once the toggle surfaces it as a point, not as a bare box with
+  // no connection points every time you drill into its container.
+  const renderUris = showInstrumentation
+    ? visibleUris
+    : new Set([...visibleUris].filter((uri) => {
+        const n = model.nodes.get(uri);
+        return !n || !hasCoreInstrumentation(n);
+      }));
+
   const nodes: Node<FlowNodeData>[] = [];
 
-  for (const uri of visibleUris) {
+  for (const uri of renderUris) {
     const n = model.nodes.get(uri);
     if (!n || isLogicalGroupNode(n)) continue;
     const connectionPoints = n.connectionPoints.map((cpUri) => toFlowCP(model, cpUri)).filter((cp): cp is FlowCP => Boolean(cp));
@@ -146,7 +158,7 @@ export function buildFlowElements(
     });
   }
 
-  const edges: Edge<FlowEdgeData>[] = projectEdges(model, visibleUris).map((pe) => {
+  const edges: Edge<FlowEdgeData>[] = projectEdges(model, renderUris).map((pe) => {
     const primary = pe.raw[0];
     const mediums = new Set(pe.raw.map((r) => r.medium).filter((m): m is string => Boolean(m)));
     const hubLabel = pe.raw.length > 1 ? `${pe.raw.length} connections` : primary.hubLabel || "connection";
