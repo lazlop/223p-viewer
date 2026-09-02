@@ -112,12 +112,15 @@ export function buildS223Model(graph: RdfGraph): S223Model {
   // Three predicates declare ownership: hasConnectionPoint/hasBoundaryConnectionPoint (equipment
   // -> CP, the common case) and hasOptionalConnectionPoint (same direction, just marks the port as
   // optional — ownership-wise identical). A few real 223P models instead declare it in reverse,
-  // CP -> equipment, via isConnectionPointOf.
+  // CP -> equipment, via isConnectionPointOf. Some data (e.g. bschema-rs's generated class graphs)
+  // redundantly asserts both directions for the same pair — guarded by `!cp.ownerUri` on both
+  // branches (not just isConnectionPointOf) so whichever direction is processed first wins and the
+  // second is a no-op, instead of double-pushing the CP into owner.connectionPoints.
   for (const edge of graph.edges) {
     if (edge.predicate === P.hasConnectionPoint || edge.predicate === P.hasBoundaryConnectionPoint || edge.predicate === P.hasOptionalConnectionPoint) {
       const cp = connectionPoints.get(edge.target);
       const owner = nodes.get(edge.source);
-      if (cp && owner) {
+      if (cp && owner && !cp.ownerUri) {
         cp.ownerUri = owner.uri;
         owner.connectionPoints.push(cp.uri);
       }

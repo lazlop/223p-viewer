@@ -71,11 +71,26 @@ export interface FlowNodeData extends Record<string, unknown> {
    * the point's own immediate container, which is never itself rendered while you're drilled into
    * it. See pointsFlowBuilder.ts's buildInstrumentationOverlay. */
   instrumentation?: FlowInstrumentationItem[];
+  /** BSchema view only: real building instances this bschema class summarizes (from the paired
+   * bschema-members graph). See App.tsx's bschemaFlow and bschemaMembers.ts. */
+  members?: FlowMember[];
+  /** BSchema view only: click a navigable member to jump to it in Equipment view. */
+  onMemberClick?: (uri: string) => void;
+  /** Equipment view only: this is the box a BSchema member click just jumped to. */
+  highlighted?: boolean;
 }
 
 export interface FlowInstrumentationItem {
   relation: InstrumentationRelation;
   targetLabel?: string;
+}
+
+export interface FlowMember {
+  uri: string;
+  label: string;
+  /** false when the member doesn't resolve to anything in the paired building model (e.g. an
+   * ExternalReference) — rendered as inert text instead of a clickable link. */
+  navigable: boolean;
 }
 
 export interface FlowEdgeData extends Record<string, unknown> {

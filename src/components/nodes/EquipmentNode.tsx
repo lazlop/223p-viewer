@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { FlowCP, FlowNodeData } from "../../lib/flowBuilder";
 import { RELATION_LABELS } from "../../lib/pointsFlowBuilder";
-import { PropertyRows } from "../PropertyTooltip";
+import { MemberRows, PropertyRows } from "../PropertyTooltip";
 
 type EquipmentNodeType = Node<FlowNodeData, "equipmentNode">;
 
@@ -58,9 +58,10 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
   const right = data.connectionPoints.filter((cp) => sideFor(cp) === Position.Right);
   const pointClass = data.pointKind ? ` equipment-node--point equipment-node--point-${data.pointKind}` : "";
   const mutedClass = data.muted ? " equipment-node--muted" : "";
+  const highlightedClass = data.highlighted ? " equipment-node--highlighted" : "";
 
   return (
-    <div className={`equipment-node equipment-node--${data.kind}${pointClass}${mutedClass}`}>
+    <div className={`equipment-node equipment-node--${data.kind}${pointClass}${mutedClass}${highlightedClass}`}>
       {/* Handle-less fallback anchor: a "rolled up" connection edge (its real endpoint is nested
           inside a container that isn't expanded at this view level — see hierarchy.ts::projectEdges)
           carries no sourceHandle/targetHandle id, since it doesn't correspond to one exact
@@ -82,7 +83,10 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
       {data.typeName && <div className="equipment-node__type">{data.typeName}</div>}
       {data.hasChildren && <div className="equipment-node__hint">double-click to open</div>}
 
-      {(data.properties.length > 0 || data.groupMemberships.length > 0 || (data.instrumentation && data.instrumentation.length > 0)) && (
+      {(data.properties.length > 0 ||
+        data.groupMemberships.length > 0 ||
+        (data.instrumentation && data.instrumentation.length > 0) ||
+        (data.members && data.members.length > 0)) && (
         <div className="equipment-node__tooltip">
           {data.groupMemberships.length > 0 && (
             <div className="tooltip-row">
@@ -96,6 +100,7 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
               {item.targetLabel ? ` ${item.targetLabel}` : ""}
             </div>
           ))}
+          {data.members && <MemberRows members={data.members} onMemberClick={data.onMemberClick} />}
         </div>
       )}
     </div>

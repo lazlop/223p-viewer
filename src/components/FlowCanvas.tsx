@@ -22,6 +22,10 @@ interface FlowCanvasProps<TNodeData extends Record<string, unknown>, TEdgeData e
   edgeTypes: EdgeTypes;
   /** Changes identity whenever the current view changes, to trigger a re-fit. */
   viewKey: string;
+  /** When set and present among `nodes`, fit the view to just this node (generous padding) instead
+   * of fitting everything — used to draw the eye to a box just jumped to from elsewhere (e.g. a
+   * BSchema member click). */
+  focusNodeId?: string;
   onNodeDoubleClick?: (nodeId: string) => void;
   onNodeClick?: (node: Node<TNodeData>) => void;
 }
@@ -32,6 +36,7 @@ export function FlowCanvas<TNodeData extends Record<string, unknown>, TEdgeData 
   nodeTypes,
   edgeTypes,
   viewKey,
+  focusNodeId,
   onNodeDoubleClick,
   onNodeClick,
 }: FlowCanvasProps<TNodeData, TEdgeData>) {
@@ -48,10 +53,16 @@ export function FlowCanvas<TNodeData extends Record<string, unknown>, TEdgeData 
   useEffect(() => {
     // Deferred: remounting via `key` races React Flow's own dimension measurement of freshly
     // swapped-in nodes — fitView can run against zero-size nodes. Waiting a tick lets it land.
-    const id = window.setTimeout(() => fitView({ duration: 200, padding: 0.2 }), 50);
+    const id = window.setTimeout(() => {
+      if (focusNodeId && nodes.some((n) => n.id === focusNodeId)) {
+        fitView({ nodes: [{ id: focusNodeId }], duration: 300, padding: 2, maxZoom: 1 });
+      } else {
+        fitView({ duration: 200, padding: 0.2 });
+      }
+    }, 50);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewKey]);
+  }, [viewKey, focusNodeId]);
 
   return (
     <ReactFlow

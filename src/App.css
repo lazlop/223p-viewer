@@ -77,6 +77,12 @@
   white-space: nowrap;
 }
 
+.app__file-name--info {
+  margin-left: auto;
+  max-width: 480px;
+  white-space: normal;
+}
+
 .app__file-button {
   font-size: 12px;
   padding: 5px 10px;
@@ -197,6 +203,51 @@
 .tooltip-ref {
   color: #91a7ff;
   font-size: 11px;
+}
+
+/* BSchema view: member list appended to the properties hover box (see EquipmentNode.tsx /
+   PropertyTooltip.tsx's MemberRows). Re-enables pointer-events (the tooltip itself is
+   pointer-events:none, purely informational everywhere else) so member links are clickable. */
+.tooltip-members {
+  pointer-events: auto;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 4px;
+}
+.tooltip-members__header {
+  font-weight: 600;
+  color: #adb5bd;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 0;
+}
+.tooltip-member-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #91a7ff;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+.tooltip-member-link:hover {
+  text-decoration-color: currentColor;
+}
+.tooltip-member-inert {
+  color: #adb5bd;
+}
+.tooltip-members__more {
+  color: #868e96;
+  font-size: 11px;
+  padding-top: 2px;
+}
+
+/* Equipment view: a box just jumped to from a BSchema member click (see App.tsx's highlightUri). */
+.equipment-node--highlighted {
+  box-shadow: 0 0 0 3px #F59F00, 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 /* Fallback anchor for rolled-up connection edges (see EquipmentNode.tsx) — needs to exist so
