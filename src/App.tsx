@@ -186,8 +186,25 @@ export default function App() {
   );
 
   const bschemaFlow = useMemo(() => {
-    const flow = buildFlowElements(bschemaModel, bschemaVisibleUris);
-    const nodes = flow.nodes.map((n) => {
+    let renderUris = bschemaVisibleUris;
+    const overlay = showPoints
+      ? buildInstrumentationOverlay(bschemaModel, bschemaVisibleUris, showFunctions, showSensorsActuators, showAllProperties)
+      : null;
+    if (overlay && overlay.extraPointUris.size > 0) {
+      renderUris = new Set([...bschemaVisibleUris, ...overlay.extraPointUris]);
+    }
+
+    const flow = buildFlowElements(bschemaModel, renderUris, showPoints, showFunctions, showSensorsActuators);
+    let nodes: (typeof flow.nodes[number] | ReturnType<typeof buildInstrumentationOverlay>["nodes"][number])[] = flow.nodes;
+    let edges = flow.edges;
+    if (overlay) {
+      edges = [...edges, ...overlay.edges];
+      nodes = [
+        ...flow.nodes.map((n) => (overlay.summaries.has(n.id) ? { ...n, data: { ...n.data, instrumentation: overlay.summaries.get(n.id) } } : n)),
+        ...overlay.nodes,
+      ];
+    }
+    const processedNodes = nodes.map((n) => {
       const memberUris = bschemaMembers.get(n.id);
       if (!memberUris || memberUris.length === 0) return n;
       const members: FlowMember[] = memberUris.map((uri) => ({
@@ -197,9 +214,9 @@ export default function App() {
       }));
       return { ...n, data: { ...n.data, members, onMemberClick: handleMemberClick } };
     });
-    const laidOutNodes = layoutGraph(nodes, flow.edges, (n) => ("connectionPoints" in n.data ? n.data.connectionPoints.length : 0));
-    return { nodes: laidOutNodes, edges: flow.edges };
-  }, [bschemaModel, bschemaVisibleUris, bschemaMembers, b59BuildingModel, handleMemberClick]);
+    const laidOutNodes = layoutGraph(processedNodes, edges, (n) => ("connectionPoints" in n.data ? n.data.connectionPoints.length : 0));
+    return { nodes: laidOutNodes, edges };
+  }, [bschemaModel, bschemaVisibleUris, bschemaMembers, b59BuildingModel, handleMemberClick, showPoints, showFunctions, showSensorsActuators, showAllProperties]);
 
   const handleBschemaNodeDoubleClick = useCallback(
     (nodeId: string) => {
@@ -229,48 +246,48 @@ export default function App() {
             BSchema
           </button>
         </div>
-        {activeTab === "equipment" ? (
-          <Breadcrumb path={path} onNavigate={handleBreadcrumbNavigate} />
-        ) : (
-          <Breadcrumb path={bschemaPath} onNavigate={setBschemaContainerUri} />
-        )}
-        {activeTab === "equipment" && (
-          <>
-            <div className="app__view-toggle">
-              <button
-                className={`app__view-toggle-btn ${showPoints ? "app__view-toggle-btn--active" : ""}`}
-                aria-pressed={showPoints}
-                onClick={() => setShowPoints((v) => !v)}
-              >
-                Sensors &amp; Controls
-              </button>
-            </div>
-            {showPoints && (
-              <label className="app__sub-toggle">
-                <input
-                  type="checkbox"
-                  checked={showSensorsActuators}
-                  onChange={(e) => setShowSensorsActuators(e.target.checked)}
-                />
-                Sensors &amp; Actuators
-              </label>
-            )}
-            {showPoints && (
-              <label className="app__sub-toggle">
-                <input type="checkbox" checked={showFunctions} onChange={(e) => setShowFunctions(e.target.checked)} />
-                Functions
-              </label>
-            )}
-            {showPoints && (
-              <label className="app__sub-toggle">
-                <input
-                  type="checkbox"
-                  checked={showAllProperties}
-                  onChange={(e) => setShowAllProperties(e.target.checked)}
-                />
-                All Properties
-              </label>
-            )}
+          {activeTab === "equipment" && (
+            <Breadcrumb path={path} onNavigate={handleBreadcrumbNavigate} />
+          )}
+          {activeTab === "bschema" && (
+            <Breadcrumb path={bschemaPath} onNavigate={setBschemaContainerUri} />
+          )}
+          <div className="app__view-toggle">
+            <button
+              className={`app__view-toggle-btn ${showPoints ? "app__view-toggle-btn--active" : ""}`}
+              aria-pressed={showPoints}
+              onClick={() => setShowPoints((v) => !v)}
+            >
+              Sensors &amp; Controls
+            </button>
+          </div>
+          {showPoints && (
+            <label className="app__sub-toggle">
+              <input
+                type="checkbox"
+                checked={showSensorsActuators}
+                onChange={(e) => setShowSensorsActuators(e.target.checked)}
+              />
+              Sensors &amp; Actuators
+            </label>
+          )}
+          {showPoints && (
+            <label className="app__sub-toggle">
+              <input type="checkbox" checked={showFunctions} onChange={(e) => setShowFunctions(e.target.checked)} />
+              Functions
+            </label>
+          )}
+          {showPoints && (
+            <label className="app__sub-toggle">
+              <input
+                type="checkbox"
+                checked={showAllProperties}
+                onChange={(e) => setShowAllProperties(e.target.checked)}
+              />
+              All Properties
+            </label>
+          )}
+          {activeTab === "equipment" && (
             <div className="app__file">
               <span className="app__file-name" title={fileName}>
                 {fileName}
@@ -290,13 +307,12 @@ export default function App() {
                 <input type="file" accept=".ttl,text/turtle" onChange={handleFileChange} hidden />
               </label>
             </div>
-          </>
-        )}
-        {activeTab === "bschema" && (
-          <span className="app__file-name app__file-name--info">
-            b59, threshold-30 — hover a box for its properties &amp; real members; click a member to jump to it in Equipment view
-          </span>
-        )}
+          )}
+          {activeTab === "bschema" && (
+            <span className="app__file-name app__file-name--info">
+              b59, threshold-30 — hover a box for its properties &amp; real members; click a member to jump to it in Equipment view
+            </span>
+          )}
       </header>
       <div className="app__canvas">
         <ReactFlowProvider>
@@ -316,7 +332,7 @@ export default function App() {
               edges={bschemaFlow.edges}
               nodeTypes={EQUIPMENT_NODE_TYPES}
               edgeTypes={EQUIPMENT_EDGE_TYPES}
-              viewKey={`bschema::${bschemaContainerUri ?? "__root__"}`}
+               viewKey={`bschema::${bschemaContainerUri ?? "__root__"}::${showPoints}::${showFunctions}::${showSensorsActuators}::${showAllProperties}`}
               onNodeDoubleClick={handleBschemaNodeDoubleClick}
             />
           )}
