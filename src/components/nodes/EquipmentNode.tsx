@@ -87,7 +87,7 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
         data.groupMemberships.length > 0 ||
         (data.instrumentation && data.instrumentation.length > 0) ||
         (data.members && data.members.length > 0)) && (
-        <div className="equipment-node__tooltip">
+        <div className="equipment-node__tooltip nowheel">
           {data.groupMemberships.length > 0 && (
             <div className="tooltip-row">
               <strong>member of</strong> {data.groupMemberships.join(", ")}

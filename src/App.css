@@ -194,7 +194,11 @@
   line-height: 1.5;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
   z-index: 20;
-  pointer-events: none;
+  /* auto (not none like other info-only tooltips): needed so wheel/scroll events land on this
+     box instead of passing through to the canvas, and so hovering into the tooltip itself
+     (it's a child of .equipment-node, positioned outside the node's box) keeps it open long
+     enough to scroll a long member list. */
+  pointer-events: auto;
 }
 .equipment-node:hover .equipment-node__tooltip {
   display: block;
@@ -216,10 +220,8 @@
 }
 
 /* BSchema view: member list appended to the properties hover box (see EquipmentNode.tsx /
-   PropertyTooltip.tsx's MemberRows). Re-enables pointer-events (the tooltip itself is
-   pointer-events:none, purely informational everywhere else) so member links are clickable. */
+   PropertyTooltip.tsx's MemberRows). */
 .tooltip-members {
-  pointer-events: auto;
   margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding-top: 4px;
@@ -248,11 +250,6 @@
 }
 .tooltip-member-inert {
   color: #adb5bd;
-}
-.tooltip-members__more {
-  color: #868e96;
-  font-size: 11px;
-  padding-top: 2px;
 }
 
 /* Equipment view: a box just jumped to from a BSchema member click (see App.tsx's highlightUri). */

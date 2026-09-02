@@ -1,18 +1,15 @@
 import type { FlowMember, FlowProperty } from "../lib/flowBuilder";
 
-const MEMBER_PREVIEW_COUNT = 12;
-
 /** BSchema view: the real building instances a bschema class summarizes, in its properties
  * hover box. Navigable members (resolve to something in the paired building model) are clickable
- * links to Equipment view; others render as inert text. Long lists are truncated with a count. */
+ * links to Equipment view; others render as inert text. The hover box scrolls (see
+ * .equipment-node__tooltip in App.css) so the full list is reachable rather than truncated. */
 export function MemberRows({ members, onMemberClick }: { members: FlowMember[]; onMemberClick?: (uri: string) => void }) {
   if (members.length === 0) return null;
-  const shown = members.slice(0, MEMBER_PREVIEW_COUNT);
-  const hiddenCount = members.length - shown.length;
   return (
     <div className="tooltip-members">
       <div className="tooltip-members__header">Members ({members.length})</div>
-      {shown.map((m) => (
+      {members.map((m) => (
         <div key={m.uri} className="tooltip-row">
           {m.navigable ? (
             <button
@@ -31,7 +28,6 @@ export function MemberRows({ members, onMemberClick }: { members: FlowMember[]; 
           )}
         </div>
       ))}
-      {hiddenCount > 0 && <div className="tooltip-members__more">+{hiddenCount} more</div>}
     </div>
   );
 }
