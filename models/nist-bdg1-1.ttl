@@ -1888,7 +1888,7 @@ psm:VAVBox1Inlet
 .
 psm:VAVBox1InletFlowSensor
   a s223:FlowSensor ;
-  s223:hasObservationLocation psm:VAV2DamperInletCP ;
+  s223:hasObservationLocation psm:VAV1DamperInletCP ;
   s223:observes psm:VAV1InletFlow ;
   rdfs:label "S9" ;
 .
