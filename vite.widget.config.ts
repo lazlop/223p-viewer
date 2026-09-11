@@ -8,6 +8,11 @@ import react from "@vitejs/plugin-react";
 // python/s223_viewer_widget for the Python side that points at this build's output.
 export default defineConfig({
   plugins: [react()],
+  // anywidget loads this bundle directly in the browser with no bundler-provided `process` global,
+  // so React/ReactFlow's `process.env.NODE_ENV` dev-mode checks need to be inlined at build time.
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   build: {
     outDir: "widget-dist",
     emptyOutDir: true,
