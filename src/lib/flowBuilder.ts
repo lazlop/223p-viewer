@@ -78,6 +78,9 @@ export interface FlowNodeData extends Record<string, unknown> {
   onMemberClick?: (uri: string) => void;
   /** Equipment view only: this is the box a BSchema member click just jumped to. */
   highlighted?: boolean;
+  /** Query-selection sidebar: this box is click-selected, narrowing the dropdowns below to it (and
+   * whatever its own hover tooltip surfaces) instead of everything in the current view. */
+  selected?: boolean;
 }
 
 export interface FlowInstrumentationItem {

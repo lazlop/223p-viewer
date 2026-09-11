@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   applyNodeChanges,
   Background,
@@ -27,7 +27,11 @@ interface FlowCanvasProps<TNodeData extends Record<string, unknown>, TEdgeData e
    * BSchema member click). */
   focusNodeId?: string;
   onNodeDoubleClick?: (nodeId: string) => void;
-  onNodeClick?: (node: Node<TNodeData>) => void;
+  /** Passes the raw click event through so the caller can read `shiftKey` (query-selection
+   * multi-select) without this component needing to know anything about that feature. */
+  onNodeClick?: (node: Node<TNodeData>, event: ReactMouseEvent) => void;
+  /** Fired on a click that hits empty canvas — used to clear a box selection. */
+  onPaneClick?: () => void;
 }
 
 export function FlowCanvas<TNodeData extends Record<string, unknown>, TEdgeData extends Record<string, unknown>>({
@@ -39,6 +43,7 @@ export function FlowCanvas<TNodeData extends Record<string, unknown>, TEdgeData 
   focusNodeId,
   onNodeDoubleClick,
   onNodeClick,
+  onPaneClick,
 }: FlowCanvasProps<TNodeData, TEdgeData>) {
   // React Flow only reflects interaction state (selection, drag) back into what it renders if you
   // apply its change events onto the nodes array yourself.
@@ -74,7 +79,8 @@ export function FlowCanvas<TNodeData extends Record<string, unknown>, TEdgeData 
       onlyRenderVisibleElements
       defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed, color: "#495057", width: 16, height: 16 } }}
       onNodeDoubleClick={onNodeDoubleClick ? (_, node) => onNodeDoubleClick(node.id) : undefined}
-      onNodeClick={onNodeClick ? (_, node) => onNodeClick(node) : undefined}
+      onNodeClick={onNodeClick ? (event, node) => onNodeClick(node, event) : undefined}
+      onPaneClick={onPaneClick}
       minZoom={0.05}
     >
       <Background />

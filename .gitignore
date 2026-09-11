@@ -1,5 +1,9 @@
 node_modules
 dist
 dist-ssr
+widget-dist
 *.local
 .DS_Store
+
+python/.venv
+.claude/

@@ -1,0 +1,21 @@
+[project]
+name = "s223-viewer-widget"
+version = "0.1.0"
+description = "anywidget wrapper around the 223p-viewer visualization + query-selection clipboard, for Jupyter/marimo notebooks."
+requires-python = ">=3.10"
+dependencies = [
+    "anywidget>=0.9.13",
+    "traitlets>=5.14",
+]
+
+[dependency-groups]
+dev = [
+    "marimo>=0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["s223_viewer_widget/**"]

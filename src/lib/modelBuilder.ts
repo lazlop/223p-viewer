@@ -45,7 +45,7 @@ function buildConnectionPoint(node: RdfNode): ConnectionPointRef {
   };
 }
 
-function buildProperty(node: RdfNode): PropertyRef {
+export function buildProperty(node: RdfNode): PropertyRef {
   const valueProp = node.properties.find((p) => p.predicate === P.hasValue && p.isLiteral);
   const qkProp = node.properties.find((p) => p.predicate === P.hasQuantityKind && !p.isLiteral);
   const unitProp = node.properties.find((p) => p.predicate === P.hasUnit && !p.isLiteral);

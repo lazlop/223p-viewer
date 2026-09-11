@@ -59,9 +59,10 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
   const pointClass = data.pointKind ? ` equipment-node--point equipment-node--point-${data.pointKind}` : "";
   const mutedClass = data.muted ? " equipment-node--muted" : "";
   const highlightedClass = data.highlighted ? " equipment-node--highlighted" : "";
+  const selectedClass = data.selected ? " equipment-node--selected" : "";
 
   return (
-    <div className={`equipment-node equipment-node--${data.kind}${pointClass}${mutedClass}${highlightedClass}`}>
+    <div className={`equipment-node equipment-node--${data.kind}${pointClass}${mutedClass}${highlightedClass}${selectedClass}`}>
       {/* Handle-less fallback anchor: a "rolled up" connection edge (its real endpoint is nested
           inside a container that isn't expanded at this view level — see hierarchy.ts::projectEdges)
           carries no sourceHandle/targetHandle id, since it doesn't correspond to one exact

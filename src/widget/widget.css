@@ -1,0 +1,30 @@
+/* Scopes the same custom properties App.css's selectors rely on (var(--bg), var(--panel), ...)
+   onto the widget's own root instead of :root, so embedding this bundle in a notebook page
+   doesn't leak global CSS variables onto the host page. */
+.s223-widget.app {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --text-muted: #57606a;
+  --accent: #4c6ef5;
+  color-scheme: light;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+}
+.s223-widget.app *,
+.s223-widget.app *::before,
+.s223-widget.app *::after {
+  box-sizing: border-box;
+}
+
+/* The Sensors & Controls sub-toggles wrap onto their own row at notebook-cell widths rather than
+   forcing the header to scroll horizontally. */
+.s223-widget .app__header {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}

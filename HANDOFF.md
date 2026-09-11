@@ -19,6 +19,16 @@ views sharing one parsed model:
   reference as pills, and the equipment those properties belong to as clickable reference boxes
   (click jumps back into the Equipment view at the right spot).
 
+The Equipment view also visualizes Brick-schema RDF/Turtle models (bundled example:
+`models/brick-model.ttl`) — not as a separate tab, but as a **Schema** selector (223P/Brick) next
+to the file picker, since a Brick equipment/zone renders exactly like a 223P one once its Points
+are folded into properties. See "Brick model support" below and `lib/brickModelBuilder.ts`.
+
+The Equipment view's rendering pipeline is also packaged as a standalone
+[anywidget](https://anywidget.dev), so it (and its query-selection clipboard) can be embedded in a
+Jupyter or marimo notebook instead of only this standalone app — see "anywidget / marimo
+integration" below, `src/widget/`, and `python/`.
+
 Repo root: `/home/lazlo/Desktop/semantics/223p-viewer`. It's its own git repo (not nested under
 a parent repo). Bundled example model: `models/nist-bdg1-1.ttl` (NIST/Pritoni office building
 sample, imported via Vite's `?raw` suffix in `App.tsx`, no fetch needed). `npm run dev` serves
@@ -186,6 +196,111 @@ ports — one fewer decision surfaced to the user, one axis of behavior removed 
   Trying other real 223P models via "Load .ttl" would be the fastest way to find whether always-
   flatten feels wrong anywhere, before considering resurrecting anything from
   `systems-view-experiments`.
+
+## Brick model support
+
+Brick models are visualized through the **same Equipment tab** as 223P, not a separate view — see
+`App.tsx`'s `schemaMode` state (`"s223" | "brick"`) and the **Schema** select next to the file
+picker. The key insight: a Brick Point (Sensor/Setpoint/Command/...) reached via
+`hasPoint`/`isPointOf` is exactly a 223P Property in spirit — an observable/settable value
+declared directly on itself via `qudt:hasUnit`/`hasQuantityKind` (the *same* predicates 223P
+Properties use), owned by one piece of equipment. So `lib/brickModelBuilder.ts::buildBrickModel`
+folds Points straight into `ModelNode.properties` (reusing `modelBuilder.ts`'s own `buildProperty`
+— exported for this) instead of giving them their own box, and only equipment/zone/location
+instances become `ModelNode`s at all. That means a Brick model renders through the exact same
+`S223Model` shape, and the exact same EquipmentNode/ConnectionEdge/layout/hierarchy pipeline, that
+223P models do — no second rendering pipeline, no second view to maintain:
+- every Brick instance NOT reached via `hasPoint`/`isPointOf` → a `ModelNode` (equipment/zone/etc.)
+- `hasPoint`/`isPointOf` → a `PropertyRef` pushed onto the owning equipment's `properties`
+- `hasPart`/`isPartOf`/`hasLocation`/`isLocationOf` → a `"contains"` child edge between two boxes
+- `feeds`/`isFedBy` → a `ConnectionEdge`, through a synthetic Outlet/Inlet connection-point pair
+  invented per edge (Brick has no connection points of its own) — this is what lets a `feeds`
+  edge render as a real dot-to-dot arrow using `EquipmentNode`'s existing per-CP handles.
+- What makes a node a Point is **purely relational**: something else declares `hasPoint` on it, or
+  it declares `isPointOf` — nothing else. Earlier iterations of this tried to also catch a Point by
+  a class-name suffix (Sensor/Setpoint/Command/...) or by it carrying its own
+  `qudt:hasUnit`/`hasQuantityKind`, to paper over the bundled `brick-model.ttl`'s incomplete
+  `hasPoint` coverage (see below). Both were deliberately reverted: guessing Point-hood from a
+  naming convention or an incidental property is exactly the kind of per-file heuristic this
+  project avoids elsewhere, and it's not what actually makes something a Point in Brick's own
+  model — the `hasPoint`/`isPointOf` relation is.
+- Consequence: the bundled `brick-model.ttl` doesn't declare `hasPoint` for every point it has —
+  `heaPum_reaTRet`/`heaPum_reaTSup` (Sensors under `heaPum`) and all five `hvac_reaZon*_CO2Zon`
+  Sensors (each carrying its own `qudt:hasUnit qudt:PPM`, so they visually look exactly like every
+  properly-linked point) are never the target of a `hasPoint` edge from anything. Since nothing
+  points at them, they aren't Points under the relational definition — they render as ordinary,
+  disconnected boxes, same as `chi`/`heaPum` below, rather than folding into a property list. This
+  is a **data gap in the source file**, not a viewer bug: it's showing exactly what the model
+  declares, not what a human would guess the modeler meant.
+- The BOPTest-specific `ref:*`/`boptestrules:*` predicates in the bundled file (a non-standard
+  cross-reference layer on top of Brick, e.g. `ref:equipment "Chiller"` as a *string*, or
+  `boptestrules:pointOf brick:AHU` pointing at the **class**, not an instance) are intentionally
+  ignored for the same reason — resolving those would need per-file string-matching heuristics, not
+  real Brick semantics, even though they *could* recover some of the missing links above.
+- `chi` (Chiller) and `heaPum` (HeatPump) show up as unconnected boxes for a different, simpler
+  reason: the bundled file never declares `feeds`/`isFedBy` on either of them at all (only `ahu`
+  and the 5 VAVs do) — there's no topology data to draw an edge from, regardless of how Points are
+  classified.
+- The Sensors & Controls toggle row is hidden when `schemaMode === "brick"` (it has nothing to
+  show — there's no separate Sensor/Actuator/Function node left once Points become properties).
+- `BUNDLED_EXAMPLES` entries carry their own `schema` tag, so picking one from the dropdown sets
+  `schemaMode` to match automatically; picking an arbitrary file via "Load .ttl" instead sniffs it
+  with `looksLikeBrickGraph` (any node typed in the Brick namespace). Either way, the Schema select
+  itself stays a plain, independently-overridable control — per the explicit ask that landed this
+  design, there should be a manual schema selector *in addition to* the file selector, not only
+  auto-detection.
+- Verified against the bundled `brick-model.ttl` (a BOPTEST/BESTEST-Air-derived AHU + 5 VAV/Zone
+  pairs + Chiller + HeatPump) via the same tsc/eslint/build + throwaway-Playwright-script pattern
+  described above: switching Schema to Brick and picking the bundled example renders AHU → 5×VAV →
+  5×Zone `feeds` arrows at root exactly like a 223P Equipment view, and hovering `ahu` shows all 22
+  `hasPoint` children as a 22-row property list (name + unit + quantity kind) in the standard
+  tooltip — no separate point boxes at all. `chi`, `heaPum`, `heaPum_reaTRet`/`heaPum_reaTSup`, and
+  the 5 `_CO2Zon` sensors render as ordinary disconnected boxes, per the data gaps above.
+- Not yet tried against any other Brick model — only one bundled example exists so far. Worth
+  trying a model with real `hasPart`/`hasLocation` containment (the bundled file only exercises
+  `feeds` and `hasPoint`) to check the containment mapping once a second example turns up.
+
+## anywidget / marimo integration
+
+The query-selection clipboard (see above) is now actually consumable from an embedding host, not
+just architecturally set up for one: `src/widget/` is a second, parallel front end — an
+[anywidget](https://anywidget.dev) ESM module — alongside App.tsx's own SPA, and `python/` is the
+Python package that hosts it. Both share the exact same rendering pipeline via
+`lib/useEquipmentView.ts` (extracted from what used to be inlined in App.tsx's Equipment tab — see
+that file's own header comment), so a change there (or anywhere it depends on: modelBuilder,
+flowBuilder, pointsFlowBuilder, layout, viewScope) applies to both automatically.
+
+- `src/widget/entry.tsx` — the anywidget front-end-module entry point (`export default { render }`
+  per anywidget's AFM protocol). Mounts `WidgetApp.tsx` into whatever `el` the host hands it.
+- `src/widget/WidgetApp.tsx` — a trimmed single-tab (Equipment or Brick, via a `kind` trait)
+  version of App.tsx's Equipment tab: same `useEquipmentView` pipeline, same
+  `InViewSidebar`/`Breadcrumb`/`FlowCanvas`, but driven by an anywidget model instead of App's
+  file-picker state, and — the actual point of this — the clipboard is a **synced trait**
+  (`useModelState`, the standard anywidget+React pattern: `model.get`/`model.on("change:...")` in,
+  `model.set` + `model.save_changes()` out) instead of local React state that just sits there.
+- `src/widget/useModelState.ts` / `anywidgetModel.ts` — the generic anywidget-model React hook and
+  a minimal local `AnyModel` type (skipped the `@anywidget/types` package for one interface).
+- `vite.widget.config.ts` — separate Vite lib-mode build (`npm run build:widget`) producing a
+  single self-contained `widget-dist/{widget.js,widget.css}` (no dependency on the SPA's
+  index.html/dev server — anywidget loads `_esm`/`_css` as standalone strings/paths).
+- `python/s223_viewer_widget/` — the `anywidget.AnyWidget` subclass (`source`, `kind`, `clipboard`,
+  `height` traits) plus the built JS/CSS copied into `static/` (`python/build_widget.sh` rebuilds
+  and re-copies after a JS change). `python/README.md` has marimo/Jupyter usage; `python/pyproject.toml`
+  is a `uv`-managed package (`cd python && uv sync`).
+
+Verified end-to-end (no real browser available in this environment — Playwright refuses to install
+chromium/firefox on this host's Ubuntu 20.04, so this was checked two other ways instead): (1) a
+real marimo server (`uv run marimo run examples/demo.py --headless`) loads `S223ViewerWidget` with
+the bundled `nist-bdg1-1.ttl` and serves without error; (2) a jsdom-based script imported the
+actual built `widget-dist/widget.js`, called its `render({model, el})` with a fake anywidget model
+standing in for the Python/comm side, confirmed the query-selection sidebar renders with live data
+from the real model (148 instances), and confirmed picking one calls
+`model.set("clipboard", [...])` + `model.save_changes()` — the exact mechanism a real host
+(marimo's `mo.ui.anywidget(...).value["clipboard"]`, confirmed by reading marimo's own
+`from_anywidget.py` source) reads back. Worth a real browser check (Playwright, once available on
+a newer host) to confirm React Flow's own layout/rendering inside the widget, since jsdom has no
+real layout engine and reports 0 equipment boxes rendered for that reason alone — a jsdom
+limitation, not a sign of an actual bug, but not proof either.
 
 ## Git state
 

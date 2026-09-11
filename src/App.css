@@ -61,11 +61,22 @@
   cursor: pointer;
 }
 
-.app__file {
+.app__header-right {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.app__file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app__sidebar-toggle {
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .app__file-name {
@@ -78,7 +89,6 @@
 }
 
 .app__file-name--info {
-  margin-left: auto;
   max-width: 480px;
   white-space: normal;
 }
@@ -105,10 +115,180 @@
   cursor: pointer;
 }
 
-.app__canvas {
+.app__body {
   flex: 1;
   min-height: 0;
+  display: flex;
+}
+
+.app__canvas {
+  flex: 1;
+  min-width: 0;
   position: relative;
+}
+
+/* Query-selection sidebar: dropdowns of what's in view + a clipboard of picks from them (see
+   lib/viewScope.ts, components/InViewSidebar.tsx). Meant to be read out by an embedding context
+   (e.g. a marimo/anywidget host), not consumed inside this app. */
+.in-view-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.in-view-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.in-view-sidebar__close {
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.in-view-sidebar__close:hover {
+  color: var(--text);
+}
+
+.in-view-sidebar__pickers {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.in-view-sidebar__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.in-view-sidebar__count {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.in-view-sidebar__select {
+  width: 100%;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+.in-view-sidebar__select:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.in-view-sidebar__clipboard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.in-view-sidebar__clipboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.in-view-sidebar__clear {
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.in-view-sidebar__clear:hover {
+  color: var(--text);
+}
+
+.in-view-sidebar__empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.in-view-sidebar__clipboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.in-view-sidebar__clipboard-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.in-view-sidebar__clipboard-kind {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.in-view-sidebar__clipboard-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.in-view-sidebar__remove {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.in-view-sidebar__remove:hover {
+  color: #e03131;
 }
 
 /* Breadcrumb */
@@ -255,6 +435,12 @@
 /* Equipment view: a box just jumped to from a BSchema member click (see App.tsx's highlightUri). */
 .equipment-node--highlighted {
   box-shadow: 0 0 0 3px #F59F00, 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Query-selection sidebar: box is click-selected (see App.tsx's selectedUris / FlowCanvas's
+   onNodeClick) — narrows the dropdowns below to just the selected box(es). */
+.equipment-node--selected {
+  box-shadow: 0 0 0 3px #1C7ED6, 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 /* Fallback anchor for rolled-up connection edges (see EquipmentNode.tsx) — needs to exist so
