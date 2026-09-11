@@ -31,7 +31,7 @@ const EDGE_TYPES: EdgeTypes = { connectionEdge: ConnectionEdge, instrumentationE
  */
 export function WidgetApp({ model }: { model: AnyModel<WidgetModelState> }) {
   const [source] = useModelState<string>(model, "source");
-  const [kind] = useModelState<WidgetModelState["kind"]>(model, "kind");
+  const [kind, setKind] = useModelState<WidgetModelState["kind"]>(model, "kind");
   const [clipboardRaw, setClipboardRaw] = useModelState<WidgetModelState["clipboard"]>(model, "clipboard");
   const [height] = useModelState<string>(model, "height");
   // ClipboardItem is a plain JSON-shaped object, so this cast is just narrowing what the model
@@ -108,6 +108,19 @@ export function WidgetApp({ model }: { model: AnyModel<WidgetModelState> }) {
       <header className="app__header">
         <div className="app__title">223P Model Viewer</div>
         <Breadcrumb path={path} onNavigate={handleBreadcrumbNavigate} />
+        {/* Overrides the Python-set `kind` trait (round-trips back via useModelState, same as
+            clipboard) — lets you flip a source between builders from the widget itself instead of
+            re-running the notebook cell with a different `kind=` argument. Mirrors App.tsx's
+            identical "223P schema / Brick schema" select. */}
+        <select
+          className="app__bundled-select"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as WidgetModelState["kind"])}
+          title="Schema"
+        >
+          <option value="s223">223P schema</option>
+          <option value="brick">Brick schema</option>
+        </select>
         {kind !== "brick" && (
           <div className="app__view-toggle">
             <button
