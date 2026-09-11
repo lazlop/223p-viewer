@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { PropertyPillNodeData } from "../../lib/pointsFlowBuilder";
 
 type PropertyPillNodeType = Node<PropertyPillNodeData, "propertyPill">;
 
-export function PropertyPillNode({ data }: NodeProps<PropertyPillNodeType>) {
+function PropertyPillNodeImpl({ data }: NodeProps<PropertyPillNodeType>) {
   return (
     <div className="property-pill-node">
       <Handle type="target" position={Position.Left} />
@@ -18,3 +19,5 @@ export function PropertyPillNode({ data }: NodeProps<PropertyPillNodeType>) {
     </div>
   );
 }
+
+export const PropertyPillNode = memo(PropertyPillNodeImpl);

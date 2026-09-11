@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { RELATION_LABELS, type PointsFlowEdgeData } from "../../lib/pointsFlowBuilder";
 
 type InstrumentationEdgeType = Edge<PointsFlowEdgeData, "instrumentationEdge">;
 
-export function InstrumentationEdge({
+function InstrumentationEdgeImpl({
   id,
   sourceX,
   sourceY,
@@ -46,3 +47,5 @@ export function InstrumentationEdge({
     </>
   );
 }
+
+export const InstrumentationEdge = memo(InstrumentationEdgeImpl);

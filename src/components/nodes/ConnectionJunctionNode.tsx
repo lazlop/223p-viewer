@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 
 /**
@@ -6,7 +7,7 @@ import { Handle, Position } from "@xyflow/react";
  * pass) — rendered as just a small dot sitting on the arrow, with the arrow itself continuing
  * through it via two connectionEdge segments.
  */
-export function ConnectionJunctionNode() {
+function ConnectionJunctionNodeImpl() {
   return (
     <div className="connection-junction-node">
       <Handle type="target" id="in" position={Position.Left} />
@@ -16,3 +17,5 @@ export function ConnectionJunctionNode() {
     </div>
   );
 }
+
+export const ConnectionJunctionNode = memo(ConnectionJunctionNodeImpl);

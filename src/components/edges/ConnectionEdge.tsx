@@ -1,10 +1,11 @@
+import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import type { FlowEdgeData } from "../../lib/flowBuilder";
 import { PropertyRows } from "../PropertyTooltip";
 
 type ConnectionEdgeType = Edge<FlowEdgeData, "connectionEdge">;
 
-export function ConnectionEdge({
+function ConnectionEdgeImpl({
   id,
   sourceX,
   sourceY,
@@ -49,3 +50,5 @@ export function ConnectionEdge({
     </>
   );
 }
+
+export const ConnectionEdge = memo(ConnectionEdgeImpl);

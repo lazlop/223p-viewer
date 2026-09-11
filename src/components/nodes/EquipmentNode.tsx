@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { FlowCP, FlowNodeData } from "../../lib/flowBuilder";
 import { RELATION_LABELS } from "../../lib/pointsFlowBuilder";
@@ -53,7 +53,7 @@ function ConnectionDot({ cp, position, offsetPct }: { cp: FlowCP; position: Posi
   );
 }
 
-export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
+function EquipmentNodeImpl({ data }: NodeProps<EquipmentNodeType>) {
   const left = data.connectionPoints.filter((cp) => sideFor(cp) === Position.Left);
   const right = data.connectionPoints.filter((cp) => sideFor(cp) === Position.Right);
   const pointClass = data.pointKind ? ` equipment-node--point equipment-node--point-${data.pointKind}` : "";
@@ -107,3 +107,5 @@ export function EquipmentNode({ data }: NodeProps<EquipmentNodeType>) {
     </div>
   );
 }
+
+export const EquipmentNode = memo(EquipmentNodeImpl);

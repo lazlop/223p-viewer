@@ -268,7 +268,12 @@ export default function App() {
     return computeInViewScope(bschemaParsed.graph, bschemaModel, bschemaVisibleUris, bschemaOverlay?.extraPointUris ?? EMPTY_URI_SET);
   }, [bschemaParsed, bschemaModel, bschemaVisibleUris, bschemaOverlay, selectedUris]);
 
-  const bschemaFlow = useMemo(() => {
+  // Layout is expensive (dagre, with several randomized crossing-minimization passes for dense
+  // components — see lib/layout.ts) and depends only on which nodes/edges are visible, not on
+  // box selection. Keeping it in its own memo means shift-clicking boxes (which changes
+  // selectedUris on every click) doesn't re-run a full layout pass — only the cheap flag-
+  // annotation step below reruns. See lib/useEquipmentView.ts's identical split.
+  const bschemaLaidOut = useMemo(() => {
     let renderUris = bschemaVisibleUris;
     const overlay = bschemaOverlay;
     if (overlay && overlay.extraPointUris.size > 0) {
@@ -302,10 +307,7 @@ export default function App() {
       }));
       return { ...n, data: { ...n.data, members, onMemberClick: handleMemberClick } };
     });
-    const laidOutNodes = layoutGraph(processedNodes, edges, cpCountOf).map((n) =>
-      selectedUris.has(n.id) ? { ...n, data: { ...n.data, selected: true } } : n,
-    );
-    return { nodes: laidOutNodes, edges };
+    return { nodes: layoutGraph(processedNodes, edges, cpCountOf), edges };
   }, [
     bschemaModel,
     bschemaVisibleUris,
@@ -316,8 +318,16 @@ export default function App() {
     showFunctions,
     showSensorsActuators,
     bschemaOverlay,
-    selectedUris,
   ]);
+
+  // Cheap per-click step: stamp the selected flag onto the already-laid-out nodes. Untouched
+  // nodes keep their prior object identity, so React Flow's per-node memoization can skip
+  // re-rendering them.
+  const bschemaFlow = useMemo(() => {
+    if (selectedUris.size === 0) return bschemaLaidOut;
+    const nodes = bschemaLaidOut.nodes.map((n) => (selectedUris.has(n.id) ? { ...n, data: { ...n.data, selected: true } } : n));
+    return { nodes, edges: bschemaLaidOut.edges };
+  }, [bschemaLaidOut, selectedUris]);
 
   const handleBschemaNodeDoubleClick = useCallback(
     (nodeId: string) => {

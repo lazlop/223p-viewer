@@ -70,7 +70,12 @@ export function useEquipmentView(source: string, opts: EquipmentViewOptions) {
     return computeInViewScope(parsed.graph, model, visibleUris, overlay?.extraPointUris ?? EMPTY_URI_SET);
   }, [parsed, model, visibleUris, overlay, selectedUris]);
 
-  const flow = useMemo(() => {
+  // Layout is expensive (dagre, with several randomized crossing-minimization passes for dense
+  // components — see lib/layout.ts) and depends only on which nodes/edges are visible, not on
+  // per-node selection/highlight flags. Keeping it in its own memo means clicking/shift-clicking
+  // boxes (which changes highlightUri/selectedUris on every click) doesn't re-run a full layout
+  // pass — only the cheap flag-annotation step below reruns.
+  const laidOut = useMemo(() => {
     let renderUris = visibleUris;
     if (overlay && overlay.extraPointUris.size > 0) {
       renderUris = new Set([...visibleUris, ...overlay.extraPointUris]);
@@ -95,12 +100,20 @@ export function useEquipmentView(source: string, opts: EquipmentViewOptions) {
           ...overlay.connectionSegmentEdges,
         ]
       : built.edges;
-    const laidOutNodes = layoutGraph(nodes, edges, cpCountOf).map((n) => {
+    return { nodes: layoutGraph(nodes, edges, cpCountOf), edges };
+  }, [model, visibleUris, overlay, showPoints, showFunctions, showSensorsActuators]);
+
+  // Cheap per-click step: stamp highlighted/selected flags onto the already-laid-out nodes. Only
+  // touches the node objects whose flag actually changed, so unaffected nodes keep their prior
+  // object identity and React Flow/React.memo can skip re-rendering them.
+  const flow = useMemo(() => {
+    if (!highlightUri && (!selectedUris || selectedUris.size === 0)) return laidOut;
+    const nodes = laidOut.nodes.map((n) => {
       const withHighlight = highlightUri && n.id === highlightUri ? { ...n, data: { ...n.data, highlighted: true } } : n;
       return selectedUris?.has(n.id) ? { ...withHighlight, data: { ...withHighlight.data, selected: true } } : withHighlight;
     });
-    return { nodes: laidOutNodes, edges };
-  }, [model, visibleUris, overlay, showPoints, showFunctions, showSensorsActuators, highlightUri, selectedUris]);
+    return { nodes, edges: laidOut.edges };
+  }, [laidOut, highlightUri, selectedUris]);
 
   return { parsed, model, path, visibleUris, overlay, scope, flow };
 }
