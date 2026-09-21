@@ -115,6 +115,7 @@ bldg:hvac_reaZonWes_CO2Zon a brick:Zone_CO2 ;
     ref:hasExternalReference bldg:hvac_reaZonWes_CO2Zon_Reference .
 
 bldg:chi a brick:Chiller ;
+    brick:feeds bldg:ahu ;
     brick:hasPoint bldg:chi_reaFloSup,
         bldg:chi_reaPChi,
         bldg:chi_reaPPumDis,
@@ -187,9 +188,12 @@ bldg:chi_reaTSup_Reference a ref:BOPTestReference ;
     ref:zone "zone" .
 
 bldg:heaPum a brick:Heat_Pump_Air_Source_Condensing_Unit ;
+    brick:feeds bldg:ahu ;
     brick:hasPoint bldg:heaPum_reaFloSup,
         bldg:heaPum_reaPHeaPum,
-        bldg:heaPum_reaPPumDis ;
+        bldg:heaPum_reaPPumDis,
+        bldg:heaPum_reaTRet,
+        bldg:heaPum_reaTSup ;
     ref:hasExternalReference bldg:heaPum .
 
 bldg:heaPum_reaFloSup a brick:Hot_Water_Flow_Sensor ;
@@ -1119,30 +1123,35 @@ bldg:hvac_wes a brick:VAV ;
 bldg:flo_Cor a brick:Zone ;
     brick:hasPoint bldg:hvac_oveZonSupCor_TZonCooSet,
         bldg:hvac_oveZonSupCor_TZonHeaSet,
+        bldg:hvac_reaZonCor_CO2Zon,
         bldg:hvac_reaZonCor_TZon ;
     ref:hasExternalReference bldg:flo_Cor .
 
 bldg:flo_Eas a brick:Zone ;
     brick:hasPoint bldg:hvac_oveZonSupEas_TZonCooSet,
         bldg:hvac_oveZonSupEas_TZonHeaSet,
+        bldg:hvac_reaZonEas_CO2Zon,
         bldg:hvac_reaZonEas_TZon ;
     ref:hasExternalReference bldg:flo_Eas .
 
 bldg:flo_Nor a brick:Zone ;
     brick:hasPoint bldg:hvac_oveZonSupNor_TZonCooSet,
         bldg:hvac_oveZonSupNor_TZonHeaSet,
+        bldg:hvac_reaZonNor_CO2Zon,
         bldg:hvac_reaZonNor_TZon ;
     ref:hasExternalReference bldg:flo_Nor .
 
 bldg:flo_Sou a brick:Zone ;
     brick:hasPoint bldg:hvac_oveZonSupSou_TZonCooSet,
         bldg:hvac_oveZonSupSou_TZonHeaSet,
+        bldg:hvac_reaZonSou_CO2Zon,
         bldg:hvac_reaZonSou_TZon ;
     ref:hasExternalReference bldg:flo_Sou .
 
 bldg:flo_Wes a brick:Zone ;
     brick:hasPoint bldg:hvac_oveZonSupWes_TZonCooSet,
         bldg:hvac_oveZonSupWes_TZonHeaSet,
+        bldg:hvac_reaZonWes_CO2Zon,
         bldg:hvac_reaZonWes_TZon ;
     ref:hasExternalReference bldg:flo_Wes .
 
