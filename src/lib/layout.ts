@@ -35,6 +35,15 @@ const DENSE_NODESEP = 70;
 const DENSE_RANKSEP = 130;
 const MIN_CROSSING_TRIALS = 6;
 const MAX_CROSSING_TRIALS = 40;
+// The trial-count formula above assumes roughly constant per-trial cost, which badly
+// underestimates real dagre.layout cost for larger/denser components — cost scales
+// superlinearly with node/edge count (measured: ~9ms at 10 nodes, ~315ms at 143 nodes/320
+// edges on real building data), so a component just past DENSE_COMPONENT_NODE_THRESHOLD with
+// enough edges can burn 5+ seconds running a dozen full dagre passes back to back. This wall-
+// clock budget is the backstop: once trials have spent this long, stop early and keep whatever
+// candidate had the fewest crossings so far, rather than trusting the trial-count estimate to
+// have been in the right ballpark.
+const TRIAL_TIME_BUDGET_MS = 400;
 
 export function nodeHeight(cpCount: number): number {
   const perSide = Math.min(Math.ceil(cpCount / 2), MAX_CP_SIDE);
@@ -178,9 +187,10 @@ function layoutComponent<T extends Record<string, unknown>>(
       Math.min(MAX_CROSSING_TRIALS, Math.round(6000 / (nodes.length + componentEdges.length + 1))),
     );
     // Always try the natural (unshuffled) order first so a shuffle can never make things worse.
+    const trialsStart = performance.now();
     best = runDagre(nodes, componentEdges, getCpCount, direction, DENSE_NODESEP, DENSE_RANKSEP);
     let bestScore = countCrossings(componentEdges, best);
-    for (let i = 0; i < trialCount && bestScore > 0; i++) {
+    for (let i = 0; i < trialCount && bestScore > 0 && performance.now() - trialsStart < TRIAL_TIME_BUDGET_MS; i++) {
       const candidate = runDagre(
         shuffled(nodes, rng),
         shuffled(componentEdges, rng),
