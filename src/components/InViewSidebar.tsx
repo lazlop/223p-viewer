@@ -12,8 +12,9 @@ interface EntityPickerProps {
 // Uncontrolled <select> used as a one-shot command picker rather than a state mirror: remounting
 // via `key` after every pick is the simplest way to snap it back to the placeholder without
 // fighting a controlled `value` that has nothing stable to reflect (the choice isn't "current
-// state", it's a fire-and-forget "add this").
-function EntityPicker({ title, placeholder, entities, onPick }: EntityPickerProps) {
+// state", it's a fire-and-forget "add this"). Exported for TripleQuerySidebar.tsx (the 223P-widget
+// one-hop-triples flow), which reuses this exact picker for its own predicate/instance dropdowns.
+export function EntityPicker({ title, placeholder, entities, onPick }: EntityPickerProps) {
   const [resetKey, setResetKey] = useState(0);
 
   const handleChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -79,6 +80,7 @@ const KIND_LABEL: Record<ClipboardItem["kind"], string> = {
   class: "Class",
   predicate: "Pred",
   literal: "Lit",
+  triple: "Triple",
 };
 
 interface InViewSidebarProps {

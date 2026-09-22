@@ -37,18 +37,28 @@ __all__ = ["S223ViewerWidget"]
 
 class S223ViewerWidget(anywidget.AnyWidget):
     """Drill-down box-and-arrow view of an ASHRAE 223P or Brick RDF/Turtle model, plus a
-    query-selection clipboard built by clicking instances/classes/predicates/literals in the UI.
+    query-selection clipboard built from the UI's "Query selection" sidebar.
 
     Traits (all `sync=True`, so both directions of a change propagate over the widget's comm):
       - `source`: the raw Turtle text to visualize. Set this to switch models.
       - `kind`: `"s223"` (default) or `"brick"` — which relations `source` is parsed with. Both
-        map onto the same internal model shape, so drill-down/layout/the clipboard sidebar behave
-        identically either way.
-      - `clipboard`: the list of picks from the UI's "Query selection" sidebar, each a dict with
-        at least `kind` (`"instance" | "class" | "predicate" | "literal"`), `label`, and `key`,
-        plus `uri` for the first three or `subjectUri`/`predicate`/`value`/... for a literal (see
-        223p-viewer's src/lib/viewScope.ts::ClipboardItem for the exact shape). This is the trait
-        a notebook actually reads out — everything else is just what's needed to render.
+        map onto the same internal model shape, so drill-down/layout behave identically either
+        way, but the "Query selection" sidebar itself differs by kind (see `clipboard` below).
+      - `clipboard`: the list of picks from the sidebar, each a dict with at least `kind`, `label`,
+        and `key`. Shape depends on `kind`:
+          - `"s223"` mode: pick which predicates to traverse (e.g. `hasUnit`, `hasAspect`, `type`,
+            `contains`), then pick an instance to pull its one-hop graph on those predicates.
+            `clipboard` then holds two item kinds — `"predicate"` entries (`uri` set) that are the
+            *active filter*, plus `"triple"` entries for every triple where a picked instance was
+            the subject or the object on one of those predicates: `subjectUri`/`subjectLabel`,
+            `predicate`/`predicateLabel`, and either `objectUri`/`objectLabel` (a resource object)
+            or `value`/`datatype`/`language` with `isLiteral: true` (a literal object), plus
+            `sourceUri`/`sourceLabel` naming which instance pick produced it. This is the shape
+            meant to be read out by another repo to build a descriptive SPARQL query.
+          - `"brick"` mode: the original flat reference list — `kind` is
+            `"instance" | "class" | "predicate" | "literal"`, with `uri` set for the first three or
+            `subjectUri`/`predicate`/`value`/... for a literal.
+        See 223p-viewer's src/lib/viewScope.ts::ClipboardItem for the exact TypeScript shape.
       - `height`: CSS height for the widget's root element (e.g. `"600px"`) — notebook cells have
         no intrinsic height for the widget's internal flex layout to size against otherwise.
     """

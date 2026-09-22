@@ -201,6 +201,26 @@
   color: var(--text-muted);
 }
 
+.in-view-sidebar__chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.in-view-sidebar__chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 11.5px;
+}
+
 .in-view-sidebar__clipboard {
   flex: 1;
   min-height: 0;

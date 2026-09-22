@@ -265,7 +265,22 @@ instances become `ModelNode`s at all. That means a Brick model renders through t
 The query-selection clipboard (see above) is now actually consumable from an embedding host, not
 just architecturally set up for one: `src/widget/` is a second, parallel front end — an
 [anywidget](https://anywidget.dev) ESM module — alongside App.tsx's own SPA, and `python/` is the
-Python package that hosts it. Both share the exact same rendering pipeline via
+Python package that hosts it.
+
+**223P-mode query selection is now one-hop triples, not a flat reference list.** Widget-only, and
+only when `kind === "s223"` (Brick mode keeps the original instance/class/predicate/literal
+InViewSidebar unchanged, as does App.tsx's own standalone SPA — neither of those changed). Instead
+of adding instances/classes/predicates one at a time, `TripleQuerySidebar.tsx` has you pick which
+predicates to traverse (they land in the clipboard as `kind: "predicate"` entries that double as
+the active filter), then pick an instance to pull every triple where it's the subject *or* object
+on one of those predicates (`viewScope.ts::computeOneHopTriples`, queried against the full parsed
+graph, not just what's currently in view) — those land as `kind: "triple"` entries carrying
+subject/predicate/object plus which instance pick produced them. The point is to hand another repo
+enough structure to build a descriptive SPARQL query from the clipboard trait, which a flat
+reference list didn't carry. See `python/s223_viewer_widget/__init__.py`'s `clipboard` docstring
+for the exact shape.
+
+Both share the exact same rendering pipeline via
 `lib/useEquipmentView.ts` (extracted from what used to be inlined in App.tsx's Equipment tab — see
 that file's own header comment), so a change there (or anywhere it depends on: modelBuilder,
 flowBuilder, pointsFlowBuilder, layout, viewScope) applies to both automatically.
@@ -274,7 +289,8 @@ flowBuilder, pointsFlowBuilder, layout, viewScope) applies to both automatically
   per anywidget's AFM protocol). Mounts `WidgetApp.tsx` into whatever `el` the host hands it.
 - `src/widget/WidgetApp.tsx` — a trimmed single-tab (Equipment or Brick, via a `kind` trait)
   version of App.tsx's Equipment tab: same `useEquipmentView` pipeline, same
-  `InViewSidebar`/`Breadcrumb`/`FlowCanvas`, but driven by an anywidget model instead of App's
+  `Breadcrumb`/`FlowCanvas`, and (Brick mode only) the same `InViewSidebar` — 223P mode swaps in
+  `TripleQuerySidebar` instead, see above — but driven by an anywidget model instead of App's
   file-picker state, and — the actual point of this — the clipboard is a **synced trait**
   (`useModelState`, the standard anywidget+React pattern: `model.get`/`model.on("change:...")` in,
   `model.set` + `model.save_changes()` out) instead of local React state that just sits there.

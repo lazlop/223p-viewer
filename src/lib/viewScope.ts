@@ -28,19 +28,25 @@ export interface InViewScope {
   literals: ScopeLiteral[];
 }
 
-export type ClipboardItemKind = "instance" | "class" | "predicate" | "literal";
+export type ClipboardItemKind = "instance" | "class" | "predicate" | "literal" | "triple";
 
 export interface ClipboardItem {
   key: string;
   kind: ClipboardItemKind;
   label: string;
-  uri?: string; // instance / class / predicate
-  subjectUri?: string; // literal
-  subjectLabel?: string; // literal
-  predicate?: string; // literal
-  datatype?: string; // literal
-  language?: string; // literal
-  value?: string; // literal
+  uri?: string; // instance / class / predicate (predicate also doubles as a one-hop filter entry — see computeOneHopTriples)
+  subjectUri?: string; // literal / triple
+  subjectLabel?: string; // literal / triple
+  predicate?: string; // literal / triple
+  predicateLabel?: string; // triple
+  datatype?: string; // literal / triple (object datatype, when the object is a literal)
+  language?: string; // literal / triple (object language, when the object is a literal)
+  value?: string; // literal / triple (object literal value)
+  objectUri?: string; // triple, when the object is a resource rather than a literal
+  objectLabel?: string; // triple
+  isLiteral?: boolean; // triple: whether the object is a literal (vs. objectUri being set)
+  sourceUri?: string; // triple: the instance whose one-hop pull produced this triple
+  sourceLabel?: string; // triple
 }
 
 export const EMPTY_URI_SET: ReadonlySet<string> = new Set();
@@ -163,6 +169,85 @@ export function computeInViewScope(
 
 export function entityClipboardItem(kind: "instance" | "class" | "predicate", entity: ScopeEntity): ClipboardItem {
   return { key: `${kind}::${entity.uri}`, kind, label: entity.label, uri: entity.uri };
+}
+
+/**
+ * The 223P-widget "query selection" flow: rather than adding instances/classes one at a time,
+ * pick a set of predicates to traverse, then pick an instance to pull every triple where it's the
+ * subject *or* the object on one of those predicates (rdf:type included, sourced from the node's
+ * `types`, not `properties` — see ttlParser.ts, which folds rdf:type out of the property list).
+ * Queries the full graph, not just an in-view `InViewScope` subset, since a triple's other end
+ * need not itself be currently rendered. Each result carries `sourceUri`/`sourceLabel` (which
+ * instance pick produced it) so the UI/an export can group or bulk-remove by pull, even though the
+ * triple itself doesn't otherwise privilege either end.
+ */
+export function computeOneHopTriples(
+  graph: RdfGraph,
+  instanceUri: string,
+  instanceLabel: string,
+  predicateUris: ReadonlySet<string>,
+): ClipboardItem[] {
+  if (predicateUris.size === 0) return [];
+  const node = graph.nodes.get(instanceUri);
+  if (!node) return [];
+
+  const labelOf = (uri: string) => graph.nodes.get(uri)?.label ?? localName(uri);
+  const items: ClipboardItem[] = [];
+
+  const pushResource = (subjectUri: string, subjectLabel: string, predicate: string, objectUri: string) => {
+    const predicateLabel = localName(predicate);
+    const objectLabel = labelOf(objectUri);
+    items.push({
+      key: `triple::${subjectUri}::${predicate}::${objectUri}`,
+      kind: "triple",
+      label: `${subjectLabel} · ${predicateLabel} · ${objectLabel}`,
+      subjectUri,
+      subjectLabel,
+      predicate,
+      predicateLabel,
+      objectUri,
+      objectLabel,
+      isLiteral: false,
+      sourceUri: instanceUri,
+      sourceLabel: instanceLabel,
+    });
+  };
+
+  const pushLiteral = (subjectUri: string, subjectLabel: string, predicate: string, value: string, datatype?: string, language?: string) => {
+    const predicateLabel = localName(predicate);
+    items.push({
+      key: `triple::${subjectUri}::${predicate}::${value}::${datatype ?? ""}::${language ?? ""}`,
+      kind: "triple",
+      label: `${subjectLabel} · ${predicateLabel} = "${value}"`,
+      subjectUri,
+      subjectLabel,
+      predicate,
+      predicateLabel,
+      isLiteral: true,
+      value,
+      datatype,
+      language,
+      sourceUri: instanceUri,
+      sourceLabel: instanceLabel,
+    });
+  };
+
+  if (predicateUris.has(RDF_TYPE)) {
+    for (const typeUri of node.types) pushResource(instanceUri, instanceLabel, RDF_TYPE, typeUri);
+  }
+
+  for (const prop of node.properties) {
+    if (!predicateUris.has(prop.predicate)) continue;
+    if (prop.isLiteral) pushLiteral(instanceUri, instanceLabel, prop.predicate, prop.object, prop.datatype, prop.language);
+    else pushResource(instanceUri, instanceLabel, prop.predicate, prop.object);
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.target !== instanceUri || !predicateUris.has(edge.predicate)) continue;
+    pushResource(edge.source, labelOf(edge.source), edge.predicate, instanceUri);
+  }
+
+  return items;
 }
 
 export function literalClipboardItem(lit: ScopeLiteral): ClipboardItem {
