@@ -319,7 +319,7 @@ const INSTRUMENTATION_TYPE_SUFFIXES = ["Sensor", "Actuator", "Function"];
  * a FlowSensor physically inside a VAV box) is unaffected and still renders normally once you
  * drill into that parent.
  */
-function isInstrumentationNode(n: ModelNode): boolean {
+export function isInstrumentationNode(n: ModelNode): boolean {
   const name = n.typeName ?? "";
   return name === "Thermostat" || INSTRUMENTATION_TYPE_SUFFIXES.some((suffix) => name.endsWith(suffix));
 }
@@ -327,10 +327,12 @@ function isInstrumentationNode(n: ModelNode): boolean {
 // hasObservationLocation/hasPhysicalLocation are excluded on purpose: real 223P data (e.g.
 // Luminaire fixtures declaring `hasPhysicalLocation` straight to their room) uses them on
 // ordinary equipment just to site it, not to claim it senses or drives anything. The other six
-// relations are only ever meaningful on a genuine Sensor/Actuator/Function/Thermostat, so they're
-// what the Equipment view's Sensors & Controls toggle uses to decide what counts as a "point" for
-// color-coding and instrumentation edges (see flowBuilder.ts, pointsFlowBuilder.ts) — structural,
-// like isInstrumentationNode above, but narrower than "has any InstrumentationLink at all".
+// relations are what the Equipment view's Sensors & Controls toggle uses to decide what counts as
+// a "point" for color-coding and instrumentation edges (see flowBuilder.ts, pointsFlowBuilder.ts)
+// — structural, like isInstrumentationNode above, but narrower than "has any InstrumentationLink
+// at all". They aren't exclusive to Sensors/Actuators/Functions/Thermostats, though: actuated
+// equipment (a Valve or Damper with actuatedByProperty) carries one too, which is why the plain
+// Equipment view's hide rule also requires isInstrumentationNode (see buildFlowElements).
 const CORE_INSTRUMENTATION_RELATIONS = new Set<InstrumentationRelation>([
   "observes",
   "actuatedByProperty",

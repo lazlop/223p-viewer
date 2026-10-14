@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { CPKind, InstrumentationRelation, ModelNode, S223Model } from "../types/s223";
 import { projectEdges } from "./hierarchy";
-import { hasCoreInstrumentation, isLogicalGroupNode } from "./modelBuilder";
+import { hasCoreInstrumentation, isInstrumentationNode, isLogicalGroupNode } from "./modelBuilder";
 
 export interface FlowCP {
   uri: string;
@@ -139,12 +139,15 @@ export function buildFlowElements(
   // plain Equipment's — with the toggle off, drop them (and route any edges around them) even
   // when they're genuine s223:contains/encloses tree children, so e.g. a FlowSensor physically
   // inside a VAV box only appears once the toggle surfaces it as a point, not as a bare box with
-  // no connection points every time you drill into its container.
+  // no connection points every time you drill into its container. Only genuine instrumentation
+  // types qualify (isInstrumentationNode): physical equipment that merely carries an actuation
+  // relation — a reheat Valve or a VAV Damper with s223:actuatedByProperty — is still equipment,
+  // with real connection points and duct/pipe connections, so it stays in the plain view.
   const renderUris = showInstrumentation
     ? visibleUris
     : new Set([...visibleUris].filter((uri) => {
         const n = model.nodes.get(uri);
-        return !n || !hasCoreInstrumentation(n);
+        return !n || !(isInstrumentationNode(n) && hasCoreInstrumentation(n));
       }));
 
   const nodes: Node<FlowNodeData>[] = [];
