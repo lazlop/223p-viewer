@@ -1,7 +1,9 @@
 # Write-ups: semantic visual reduction in 223p-viewer
 
-Two write-ups covering how the viewer uses 223P/Brick semantics to decide what to draw, and how
-it avoids overwhelming the user with progressive disclosure.
+Two write-ups on how the viewer serves several user mental models (inventory, topology, data &
+control) as connected views over one semantic model, how it uses 223P/Brick semantics to decide
+what each view draws, how it avoids overwhelming the user with progressive disclosure, and how
+common building ontologies support each view.
 
 - [`paper/paper.tex`](paper/paper.tex) + [`paper/refs.bib`](paper/refs.bib): academic paper draft
   (two-column `article`; swap the `\documentclass` line for a venue template such as `acmart`).

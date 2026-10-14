@@ -11,6 +11,7 @@
 \usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{amssymb}
 \usepackage{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
@@ -21,9 +22,8 @@
 \newcommand{\pred}[1]{\texttt{#1}}   % RDF predicate / class name
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 
-\title{Show the Building, Not the Graph:\\
-Semantics-Driven Visual Reduction and Progressive Disclosure\\
-for ASHRAE 223P and Brick Building Models}
+\title{One Building, Many Mental Models:\\
+Semantics-Driven Views of ASHRAE 223P and Brick Building Models}
 
 % TODO: confirm author list, ordering, and affiliations before submission.
 \author{Lazlo Paul\\
@@ -43,10 +43,19 @@ people to \emph{look at}: a modest office-building model contains thousands of
 triples, and a real building tens of thousands, most of which are scaffolding
 (connection points, connection hubs, quantity kinds, units) rather than things an
 engineer would draw. Generic RDF and ontology visualizers render that scaffolding
-faithfully and therefore overwhelm the user. We present the design of
-\emph{223p-viewer}, a browser-based visualizer that uses the ontology's own
-semantics to decide what to draw, what to fold away, and what to defer until
-asked for. We describe seven semantic reduction techniques (including
+faithfully and therefore overwhelm the user. We argue that the underlying problem
+is one of \emph{alignment}: a useful view matches the digital representation to
+the mental model its user brings, and different users bring different ones---an
+inventory of what kinds of things the model contains, the physical topology of
+how the building is put together, and the data-and-control picture of what can be
+measured and commanded. A rich semantic model is valuable precisely because it
+holds enough information to serve all of these at once. We present
+\emph{223p-viewer}, a browser-based visualizer that serves each mental model as a
+separate but connected \emph{lens} over one shared domain model, and uses the
+ontology's own semantics to decide what each lens draws, what it folds away, and
+what it defers until asked for. We relate the lenses to the coverage of common
+building ontologies (223P, Brick, Haystack, RealEstateCore, BOT/IFC, SOSA/SSN).
+We describe seven semantic reduction techniques (including
 hub-chain collapse, connection points as port glyphs, containment-driven drill-down,
 and edge roll-up to the nearest visible ancestor), a progressive-disclosure
 overlay for the sensing-and-control layer, a schema-summary entry point, and a
@@ -56,9 +65,9 @@ boxes and 45 arrows; on a 38{,}982-triple real building it shows 143 boxes and 3
 arrows---still dense, which we report as a limitation. We also report negative
 results: three abandoned designs for rendering logical \pred{System} groupings, and
 reverted name-based heuristics. We distill these into design principles for
-semantic building-model visualization, chief among them that \emph{one tree
-should be governed by one relation}, that \emph{nothing should vanish
-silently}, and that \emph{removing options is a feature}.
+semantic building-model visualization, chief among them that \emph{one model should serve
+many mental models through connected lenses}, that \emph{one tree should be
+governed by one relation}, and that \emph{nothing should vanish silently}.
 \end{abstract}
 
 % ---------------------------------------------------------------------------
@@ -85,15 +94,36 @@ inlet connection point, equipment), and every property hangs further nodes for i
 quantity kind and unit. A force-directed drawing of every triple---what a generic
 RDF browser produces---is a hairball long before the building is interesting.
 
+The literal graph is also the wrong thing to show because there is no single
+right thing to show. People understand a building through a \emph{mental
+model}~\cite{johnsonlaird1983mental,norman2013design}, and the people who use
+semantic models hold different ones. An integrator writing a portable analytics
+query thinks in \emph{kinds}: which classes of equipment and points exist, and how
+many. A mechanical designer or commissioning agent thinks in \emph{topology}: this
+fan pushes air through that duct into that box. A controls engineer or
+fault-detection analyst thinks in \emph{data}: which sensor observes which
+property, and which command drives which actuator. These are not competing
+interpretations to be reconciled into one picture; they are different questions
+asked of the same building. 223P is verbose largely \emph{because} it carries the
+information for all of them at once: ports and connections for topology,
+properties and instrumentation for data, classes for inventory.
+
 This paper documents the approaches we took in building \emph{223p-viewer}, an
 open-source, client-only visualizer for 223P (and, through the same pipeline,
-Brick) models. Our central idea is simple: \textbf{the ontology already tells us
-what the domain's ``things'' are, how they nest, and which relations are
-scaffolding}, so the visualizer should use that semantics to reduce the graph
-before any layout algorithm sees it, and then reveal the rest progressively.
+Brick) models. It rests on two ideas. First, \textbf{serve each mental model as
+its own lens over one shared model, and keep the lenses connected}, so that a user
+can start from the view that matches how they think and cross into another
+without losing their place. Second, \textbf{the ontology already tells us what the
+domain's ``things'' are, how they nest, and which relations are scaffolding}, so
+each lens should use that semantics to reduce the graph before any layout
+algorithm sees it, and then reveal the rest progressively.
 Concretely, we contribute:
 
 \begin{enumerate}[leftmargin=*,itemsep=1pt]
+  \item A framing of semantic-model visualization as \emph{mental-model
+  alignment}, three connected lenses (inventory, topology, data-and-control)
+  that realize it, and an analysis of which lenses common building ontologies
+  can support (\cref{sec:lenses}).
   \item A catalog of \emph{semantic reduction} techniques for 223P/Brick, each a
   domain-justified mapping from RDF patterns to visual marks
   (\cref{sec:reduction}).
@@ -135,6 +165,19 @@ that a \pred{Connection} is ``an arrow''. Our work is deliberately the opposite
 trade-off: it hard-codes one family of ontologies to gain domain-faithful,
 low-clutter views.
 
+\paragraph{Mental models and multiple views.}
+Users form mental models of a system and act through them; a display succeeds
+when its conceptual model matches the user's~\cite{johnsonlaird1983mental,norman2013design}.
+Process-control research made this concrete for engineered plants:
+Rasmussen's abstraction hierarchy describes the same plant at several levels, from
+purpose and function down to physical form~\cite{rasmussen1985role}, and
+ecological interface design builds operator displays around those
+levels~\cite{vicente1992ecological}. Our lenses are a lightweight instance of the
+same idea for building models. The visualization literature on coordinated
+multiple views~\cite{wangbaldonado2000guidelines,roberts2007state} supplies the
+mechanics: several views of one dataset, linked so that a selection or
+navigation in one carries into the others.
+
 \paragraph{Large-graph visualization.}
 The classic mantra ``overview first, zoom and filter, then details on
 demand''~\cite{shneiderman1996eyes} and degree-of-interest
@@ -147,6 +190,118 @@ What distinguishes our setting is that the aggregation hierarchy is not inferred
 by clustering; it is \emph{given} by the ontology's containment relations---and
 the ontology also supplies competing, non-tree groupings (\pred{System}) that must
 be reconciled with it (\cref{sec:systems}).
+
+% ---------------------------------------------------------------------------
+\section{One Model, Several Mental Models}
+\label{sec:lenses}
+
+\Cref{tab:lenses} summarizes the three lenses 223p-viewer provides. Each answers a
+different question, serves a different user, and puts different parts of the same
+model in focus while demoting the rest to context.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Three mental models served as three connected lenses over one domain
+model.}
+\label{tab:lenses}
+\begin{tabular}{p{2.6cm}p{4.0cm}p{4.0cm}p{4.6cm}}
+\toprule
+ & \textbf{Inventory} & \textbf{Topology} & \textbf{Data \& control} \\
+\midrule
+Question & What \emph{kinds} of things are in this model, and how many? &
+How is the building put together, and what is connected to what? &
+What can be measured and commanded, and where? \\
+Typical user & Integrator, analytics developer, modeler auditing consistency &
+Mechanical designer, commissioning agent, operator tracing a flow path &
+Controls engineer, fault-detection analyst \\
+In focus & Structural classes and their member counts & Equipment, ports,
+connections, containment & Sensors, actuators, functions, properties and values \\
+Demoted to context & Individual instances (listed on hover) & Properties
+(tooltips), instrumentation (hidden) & Equipment without data (muted) \\
+In 223p-viewer & BSchema view (\cref{fig:bschema}) & Equipment view
+(\cref{fig:root}) & Sensors \& Controls overlay (\cref{fig:overlay}) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\paragraph{Connected, not merged.}
+The lenses are useful because they are separate and because they are linked. They
+share one domain model (\cref{sec:overview}), so an entity has the same identity
+(its URI) in every lens, and crossing between lenses is cheap:
+\begin{itemize}[leftmargin=*,itemsep=1pt]
+  \item \emph{Inventory $\to$ topology.} Each summary class lists its real
+  members; clicking one opens the instance view drilled to the member's
+  container, with the member highlighted and the data overlay on.
+  \item \emph{Topology $\leftrightarrow$ data.} The data lens is an overlay on the
+  topology lens's own containment tree, not a separate canvas. An earlier version
+  had a separate, flat ``points'' canvas; it answered \emph{what sensors exist}
+  but lost \emph{where they are}, which is exactly what the topology lens supplies.
+  \item \emph{Any lens $\to$ query.} The query-selection clipboard draws from
+  whatever the current lens shows (\cref{sec:disclosure}), so each mental model
+  is also a starting point for a SPARQL query.
+\end{itemize}
+
+\paragraph{Served differently.}
+Because the lenses are independent views over one model, they need not be
+delivered together. In the standalone app they are tabs and a toggle; in the
+notebook widget, an analyst gets the topology lens plus a triple-export clipboard
+and no inventory tab. A facilities tool could open on the data lens and a
+design-review tool on the topology lens. Choosing a lens is a deployment choice,
+not a change to the model.
+
+\paragraph{What the ontology must contain.}
+A lens can only be served if the ontology records the information it needs.
+\Cref{tab:ontologies} compares common building ontologies against the three lenses
+plus spatial context. This is an analytical comparison: 223p-viewer implements
+223P and Brick, and the other rows describe what a lens over each would have to
+work with.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Which mental models common building ontologies can support. \checkmark{}
+= first-class constructs; $\circ$ = partial or coarse; -- = out of scope.
+223p-viewer currently reads 223P and Brick.}
+\label{tab:ontologies}
+\begin{tabular}{p{2.5cm}p{3.1cm}p{3.6cm}p{3.6cm}p{3.1cm}}
+\toprule
+Ontology & Inventory & Topology & Data \& control & Spatial context \\
+\midrule
+ASHRAE 223P~\cite{ashrae223p} & \checkmark{} class hierarchy &
+\checkmark{} connection points, \pred{Connection}s, \pred{cnx} &
+\checkmark{} \pred{Property}, \pred{observes}, actuators, functions &
+\checkmark{} physical and domain spaces, zones \\
+Brick~\cite{balaji2016brick} & \checkmark{} class hierarchy &
+$\circ$ \pred{feeds}, \pred{hasPart} at equipment level, no ports &
+\checkmark{} Points (sensor, setpoint, command), \pred{hasPoint} &
+\checkmark{} locations, \pred{hasLocation} \\
+Project Haystack~\cite{haystack} & $\circ$ tags and defs &
+$\circ$ references are mostly ownership and siting &
+\checkmark{} point tags, \pred{equipRef} & \checkmark{} \pred{siteRef}, \pred{spaceRef} \\
+RealEstateCore~\cite{hammar2019rec} & \checkmark{} class hierarchy &
+$\circ$ assets and components & $\circ$ points &
+\checkmark{} buildings, levels, rooms \\
+BOT~\cite{rasmussen2021bot} / IFC~\cite{ifc} & \checkmark{} element classes &
+$\circ$ IFC distribution ports; BOT element adjacency &
+-- elements, not data points & \checkmark{} site, building, storey, space \\
+SOSA/SSN~\cite{haller2019ssn} & -- & -- &
+\checkmark{} \pred{Sensor}, \pred{observes}, \pred{Actuator} &
+$\circ$ feature of interest \\
+QUDT~\cite{qudt} & -- & -- & $\circ$ units and quantity kinds on values & -- \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Two observations follow. First, the ontologies are largely complementary: spatial
+ontologies (BOT, IFC, RealEstateCore) are strongest where equipment and data
+ontologies are weakest, and 223P is unusual in covering topology at port level.
+Second, a lens degrades gracefully when its input is coarse rather than
+disappearing. Our Brick support is a working example: Brick has no connection
+points, so the topology lens invents one outlet/inlet pair per \pred{feeds} edge and
+draws equipment-level arrows (\cref{fig:brick}), and the data lens folds Points
+into equipment instead of drawing them. The same view code serves both, at the
+fidelity each ontology allows.
 
 % ---------------------------------------------------------------------------
 \section{System Overview}
@@ -500,6 +655,10 @@ other}.
   summaries, and notebook embedding all reuse the same model and renderer, so
   reduction behavior stays consistent across them.
   \item \textbf{Latency is part of clutter.} Keep layout off the interaction path.
+  \item \textbf{Serve many mental models from one model, and keep the bridges.}
+  Give each kind of user a lens that matches how they think, over a shared model
+  so that the same entity can be followed from one lens to another
+  (\cref{sec:lenses}).
 \end{enumerate}
 
 P4 has one acknowledged tension: presentation-level choices (color-coding a node
@@ -592,9 +751,15 @@ the viewer.
   little to work with (\cref{fig:b59}). Candidate remedies are automatic entry
   through the schema summary, degree-of-interest filtering~\cite{vanham2009search},
   or a containment-inference step clearly marked as inferred.
-  \item \textbf{Hard-coded semantics.} Mappings are written for 223P and Brick.
-  Expressing them declaratively (e.g.\ as SHACL-annotated view rules) would make
-  them inspectable and portable to other ontologies.
+  \item \textbf{Hard-coded semantics, two ontologies.} Mappings are written for
+  223P and Brick; \cref{tab:ontologies} is analysis, not implementation. Expressing
+  the mappings declaratively (e.g.\ as SHACL-annotated view rules) would make them
+  inspectable and portable to Haystack, RealEstateCore, or BOT-based models, and
+  would let a model combining several ontologies feed every lens at once.
+  \item \textbf{Missing lenses.} There is no dedicated spatial lens (``what serves
+  this room?''); spaces appear only as containers in the topology lens. Nor have we
+  tested which lens each user group actually reaches for first; the personas in
+  \cref{tab:lenses} are hypotheses to be checked in a study.
   \item \textbf{Actuated equipment counts as instrumentation.} R7 hides any node
   with a core instrumentation relation. Valves and dampers that declare
   \pred{actuatedByProperty} therefore vanish from the plain equipment view
@@ -609,13 +774,16 @@ the viewer.
 % ---------------------------------------------------------------------------
 \section{Conclusion}
 
-Semantic building models are now detailed enough to be hard to look at. Our
-experience building 223p-viewer suggests that the ontology itself is the best tool
-for that problem: it says which nodes are things and which are scaffolding,
-which relation is the hierarchy, and which relations are annotations. Using that
-knowledge before layout, revealing the rest on demand, and resisting heuristics
-that guess beyond the data together produced views that engineers can read and
-that also expose errors in the models they depict.
+Semantic building models are now detailed enough to be hard to look at, and part
+of the reason is that they describe the building for several kinds of user at
+once. Our experience building 223p-viewer suggests treating that as a strength:
+serve each mental model as its own lens over one shared model, connect the lenses
+so a user can cross between them, and let the ontology decide what each lens
+draws---which nodes are things and which are scaffolding, which relation is the
+hierarchy, and which relations are annotations. Using that knowledge before layout,
+revealing the rest on demand, and resisting heuristics that guess beyond the data
+together produced views that engineers can read and that also expose errors in the
+models they depict.
 
 \paragraph{Availability.}
 Source code, bundled models, and the notebook widget:

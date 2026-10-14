@@ -1,13 +1,13 @@
 ---
 title: "Show the Building, Not the Graph"
-subtitle: "How we use the ontology itself to make ASHRAE 223P and Brick models readable"
+subtitle: "One building, many mental models: making ASHRAE 223P and Brick models readable"
 author: Lazlo Paul
 date: 2026-10
 ---
 
 # Show the building, not the graph
 
-*How we use the ontology itself to make ASHRAE 223P and Brick models readable, and what we got wrong along the way.*
+*One building, many mental models: how we make ASHRAE 223P and Brick models readable, and what we got wrong along the way.*
 
 Semantic building models are good at their job. ASHRAE 223P can tell you that the
 supply fan inside AHU-1 pushes air through a specific duct into the inlet of VAV box 3,
@@ -33,14 +33,56 @@ A generic RDF browser draws all of it, faithfully, as a hairball. That faithfuln
 the problem: most of those nodes are *scaffolding*, not things an engineer would put on a
 drawing.
 
-We built [223p-viewer](https://github.com/lazlop/223p-viewer), a browser app (no
-backend) that also runs as a notebook widget. It started from one idea:
+## There is no single right picture
 
+There's a deeper reason the literal graph fails. A good view lines the digital
+representation up with the **mental model** of the person looking at it, and the people
+who use these models carry different ones:
+
+| | **Inventory** | **Topology** | **Data & control** |
+|---|---|---|---|
+| The question | What *kinds* of things are in here, and how many? | How is it put together? What's connected to what? | What can I measure and command, and where? |
+| Who asks it | Integrators, analytics developers, modelers checking consistency | Mechanical designers, commissioning agents, operators tracing a flow | Controls engineers, fault-detection analysts |
+| In 223p-viewer | BSchema view | Equipment view | Sensors & Controls overlay |
+
+These aren't rival interpretations to be squeezed into one diagram. They are different
+questions asked of the same building. And 223P is verbose largely *because* it holds the
+answers to all three at once: ports and connections for topology, properties and sensors
+for data, classes for inventory. That verbosity is the price of serving several mental
+models from one model. A good viewer pays that price when it draws the view, instead of
+passing it on to the person reading it.
+
+We built [223p-viewer](https://github.com/lazlop/223p-viewer), a browser app (no
+backend) that also runs as a notebook widget, on two ideas:
+
+> **Serve each mental model as its own view over one shared model, and keep the views
+> connected.**
+>
 > **The ontology already tells you which nodes are "things", how they nest, and which
 > relations are plumbing. Use that before you lay anything out.**
 
-The rest of this post covers the techniques that came out of that idea, the ones we
-tried and dropped, and where the approach still falls short.
+### Connected, not merged
+
+All three views read the same underlying model, so a piece of equipment is the same
+entity (the same URI) in each, and moving between them is cheap:
+
+- **Inventory → topology.** Hover a class in the summary view to see its real members;
+  click one and you land in the equipment view, drilled into the right container, with
+  that box highlighted and the sensors shown.
+- **Topology ↔ data.** Sensors & Controls is an overlay on the equipment hierarchy, not
+  a separate page. We tried a separate page first: it told you *what* sensors existed but
+  not *where* they were, and "where" is exactly what the topology view supplies.
+- **Any view → query.** The query-selection sidebar works from whatever the current view
+  shows, so each mental model can be the starting point for a SPARQL query.
+
+Because the views are separate, they can also be **served differently**. The standalone
+app shows them as tabs and a toggle. The notebook widget gives an analyst the topology
+view plus a triple-export clipboard, and leaves out the inventory tab. A facilities tool
+could open on the data view, and a design-review tool on the topology view. Which view
+someone starts from is a deployment choice; the model doesn't change.
+
+The rest of this post covers how each view is built, what we tried and dropped, how other
+building ontologies fit in, and where the approach still falls short.
 
 ---
 
@@ -115,9 +157,8 @@ back.
 
 ### Sensors & Controls is an overlay, not a separate page
 
-Our first version had a separate "points" canvas. It answered *what sensors exist* but
-not *where they are*. So we merged it into the equipment view as a toggle that **overlays
-the same hierarchy**:
+The data view is a toggle that **overlays the equipment hierarchy** (see "Connected, not
+merged" above for why):
 
 ![VAV box, plain](figures/fig-vav-plain.png)
 ![VAV box, with Sensors & Controls and All Properties](figures/fig-vav-overlay.png)
@@ -218,6 +259,36 @@ time.
 
 ---
 
+## What about other ontologies?
+
+A view can only be drawn if the ontology records what it needs. Here is how the common
+building ontologies line up against the three views, plus spatial context ("which room is
+this in?"):
+
+| Ontology | Inventory | Topology | Data & control | Spatial |
+|---|---|---|---|---|
+| **ASHRAE 223P** | ✓ classes | ✓ connection points, ducts/pipes/wires | ✓ properties, sensors, actuators, functions | ✓ spaces, zones |
+| **Brick** | ✓ classes | ◐ `feeds`/`hasPart`, equipment level, no ports | ✓ points (`hasPoint`) | ✓ locations |
+| **Project Haystack** | ◐ tags/defs | ◐ refs are mostly ownership and siting | ✓ point tags, `equipRef` | ✓ `siteRef`, `spaceRef` |
+| **RealEstateCore** | ✓ classes | ◐ assets and components | ◐ points | ✓ buildings, levels, rooms |
+| **BOT / IFC** | ✓ element classes | ◐ IFC ports; BOT adjacency | – elements, not data points | ✓ site, building, storey, space |
+| **SOSA/SSN** | – | – | ✓ sensors, observations, actuators | ◐ feature of interest |
+| **QUDT** | – | – | ◐ units and quantity kinds | – |
+
+(✓ first-class, ◐ partial or coarse, – out of scope. The viewer reads 223P and Brick
+today; the other rows describe what a view over each would have to work with.)
+
+Two things stand out. First, the ontologies are largely **complementary**. The spatial
+ones (BOT, IFC, RealEstateCore) are strongest exactly where the equipment and data ones
+are weakest, and 223P is unusual in modeling topology all the way down to the port.
+Second, a view **degrades gracefully** when its input is coarser. Brick is the working
+example: it has no connection points, so the topology view makes up one outlet/inlet pair
+per `feeds` edge and draws equipment-level arrows, and the data view folds points into
+their equipment's hover list. The same view code serves both ontologies, at whatever
+fidelity each allows. Building the mappings declaratively, rather than hard-coding them,
+would open the door to Haystack, RealEstateCore and BOT models, and to models that mix
+several ontologies.
+
 ## Where it still falls short
 
 ![The real building's top level](figures/fig-b59-root.png)
@@ -232,22 +303,27 @@ time.
   counts them as instrumentation and hides them, even though they are real equipment with
   ports (see the VAV screenshot above). The fix is small; the screenshot shows the
   current behavior.
+- **No spatial view.** "What serves this room?" has no view of its own. Rooms only show
+  up as containers in the topology view.
 - **No user study yet.** Everything above is design rationale and hands-on experience, not
-  measured comprehension. A task-based comparison against a generic RDF browser is next.
+  measured comprehension. A task-based comparison against a generic RDF browser is next,
+  along with checking whether each kind of user actually reaches for the view we'd
+  expect.
 
 ## The principles, in one place
 
-1. **Draw the domain's things, not the triples.**
-2. **One tree, one relation.** Containment decides where things sit. Everything else is
+1. **Serve many mental models from one model, and keep the bridges.**
+2. **Draw the domain's things, not the triples.**
+3. **One tree, one relation.** Containment decides where things sit. Everything else is
    annotation.
-3. **Nothing vanishes silently.** Roll up, merge, or list it in a tooltip, but never just
+4. **Nothing vanishes silently.** Roll up, merge, or list it in a tooltip, but never just
    drop it.
-4. **Be faithful, not clever.** Data gaps should be visible, not papered over.
-5. **Conservative defaults, opt-in detail.**
-6. **Removing options is a feature.**
-7. **One pipeline for every input and host.** 223P, Brick, summaries and notebooks all
+5. **Be faithful, not clever.** Data gaps should be visible, not papered over.
+6. **Conservative defaults, opt-in detail.**
+7. **Removing options is a feature.**
+8. **One pipeline for every input and host.** 223P, Brick, summaries and notebooks all
    share it.
-8. **Latency is part of clutter.**
+9. **Latency is part of clutter.**
 
 The code, the bundled example models and the notebook widget are at
 [github.com/lazlop/223p-viewer](https://github.com/lazlop/223p-viewer). If you have a 223P
